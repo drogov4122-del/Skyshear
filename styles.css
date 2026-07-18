@@ -1,0 +1,421 @@
+/* SkyShear — atmospheric sounding / PFD altitude-tape design language.
+   Tokens first; one bold element (the FL ladder); everything else quiet. */
+
+:root {
+  --space-deep: #0A0E1A;
+  --stratosphere: #132A4A;
+  --horizon-haze: #1E3A5F;
+  --ink: #E8EEF7;
+  --ink-dim: #8FA3BF;
+  --line: rgba(143, 163, 191, 0.18);
+  --panel: rgba(10, 14, 26, 0.72);
+  --calm: #3FE0C5;
+  --light: #E8E37A;
+  --amber: #F2C94C;
+  --orange: #FF8A3D;
+  --severe: #FF3D8B;
+  --accent: var(--calm);
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --grotesk: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { color-scheme: dark; }
+
+body {
+  min-height: 100dvh;
+  font-family: var(--grotesk);
+  color: var(--ink);
+  background: var(--space-deep);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ---------- Sky layers ---------- */
+
+.sky-gradient {
+  position: fixed; inset: 0; z-index: -2;
+  background: linear-gradient(180deg, var(--space-deep) 0%, var(--stratosphere) 55%, var(--horizon-haze) 100%);
+}
+
+#camera-video {
+  position: fixed; inset: 0; z-index: -3;
+  width: 100%; height: 100%; object-fit: cover;
+  display: none;
+}
+body.camera-on #camera-video { display: block; }
+body.camera-on .sky-gradient { opacity: 0.45; }
+body.camera-on .sky-scene { display: none; }
+
+/* ---------- Living sky: stars, horizon glow, drifting clouds ----------
+   Pure gradients + transform/opacity animations only (GPU-cheap). */
+
+.sky-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+
+.stars {
+  position: absolute; inset: 0 0 45% 0;
+  background-image:
+    radial-gradient(1.2px 1.2px at 12% 18%, rgba(232,238,247,0.9), transparent 60%),
+    radial-gradient(1px 1px at 28% 8%,  rgba(232,238,247,0.7), transparent 60%),
+    radial-gradient(1.4px 1.4px at 41% 26%, rgba(191,214,255,0.8), transparent 60%),
+    radial-gradient(1px 1px at 57% 12%, rgba(232,238,247,0.6), transparent 60%),
+    radial-gradient(1.3px 1.3px at 66% 31%, rgba(232,238,247,0.75), transparent 60%),
+    radial-gradient(1px 1px at 78% 7%,  rgba(191,214,255,0.7), transparent 60%),
+    radial-gradient(1.5px 1.5px at 87% 22%, rgba(232,238,247,0.85), transparent 60%),
+    radial-gradient(1px 1px at 94% 38%, rgba(232,238,247,0.5), transparent 60%),
+    radial-gradient(1px 1px at 6% 39%,  rgba(232,238,247,0.55), transparent 60%),
+    radial-gradient(1.1px 1.1px at 49% 42%, rgba(191,214,255,0.6), transparent 60%),
+    radial-gradient(1px 1px at 21% 47%, rgba(232,238,247,0.45), transparent 60%),
+    radial-gradient(1.2px 1.2px at 72% 46%, rgba(232,238,247,0.5), transparent 60%);
+  animation: twinkle 7s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from { opacity: 0.55; }
+  to   { opacity: 1; }
+}
+
+.glow {
+  position: absolute; left: -20%; right: -20%; bottom: -12%; height: 45%;
+  background: radial-gradient(60% 90% at 50% 100%,
+    rgba(63, 224, 197, 0.14) 0%, rgba(30, 58, 95, 0.25) 45%, transparent 75%);
+}
+
+/* Each cloud band is a 200%-wide strip of soft gradient puffs that loops by
+   translating half its own width — seamless drift, transform-only. */
+.clouds {
+  position: absolute; left: 0; width: 200%; height: 34%;
+  background-repeat: repeat-x;
+  background-size: 50% 100%;
+  will-change: transform;
+}
+
+.clouds-far {
+  top: 26%; opacity: 0.85;
+  background-image:
+    radial-gradient(46% 60% at 12% 68%, rgba(150, 180, 220, 0.38) 0%, transparent 70%),
+    radial-gradient(34% 48% at 34% 55%, rgba(150, 180, 220, 0.28) 0%, transparent 70%),
+    radial-gradient(52% 64% at 62% 72%, rgba(168, 194, 228, 0.34) 0%, transparent 70%),
+    radial-gradient(30% 42% at 86% 60%, rgba(150, 180, 220, 0.26) 0%, transparent 70%);
+  animation: drift 240s linear infinite;
+}
+
+.clouds-mid {
+  top: 42%; opacity: 0.9;
+  background-image:
+    radial-gradient(40% 58% at 8% 64%,  rgba(178, 202, 234, 0.42) 0%, transparent 70%),
+    radial-gradient(54% 68% at 30% 76%, rgba(160, 186, 222, 0.32) 0%, transparent 72%),
+    radial-gradient(36% 52% at 55% 58%, rgba(178, 202, 234, 0.38) 0%, transparent 70%),
+    radial-gradient(48% 62% at 80% 70%, rgba(160, 186, 222, 0.30) 0%, transparent 72%);
+  animation: drift 150s linear infinite;
+}
+
+.clouds-near {
+  bottom: -6%; height: 46%; opacity: 1;
+  background-image:
+    radial-gradient(56% 66% at 15% 78%, rgba(190, 212, 240, 0.42) 0%, transparent 72%),
+    radial-gradient(42% 54% at 42% 66%, rgba(174, 198, 230, 0.32) 0%, transparent 70%),
+    radial-gradient(60% 72% at 68% 82%, rgba(190, 212, 240, 0.40) 0%, transparent 72%),
+    radial-gradient(38% 50% at 90% 64%, rgba(174, 198, 230, 0.30) 0%, transparent 70%);
+  animation: drift 90s linear infinite;
+}
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clouds, .stars { animation: none !important; }
+}
+
+.reticle {
+  position: fixed; left: 50%; top: 42%; z-index: -1;
+  width: 68px; height: 68px; margin: -34px 0 0 -34px;
+  border: 1px solid rgba(232, 238, 247, 0.35);
+  border-radius: 50%;
+  display: none;
+}
+.reticle span {
+  position: absolute; left: 50%; top: 50%;
+  width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 238, 247, 0.6);
+}
+.reticle::before, .reticle::after {
+  content: ""; position: absolute; background: rgba(232, 238, 247, 0.35);
+}
+.reticle::before { left: -14px; right: -14px; top: 50%; height: 1px; }
+.reticle::after { top: -14px; bottom: -14px; left: 50%; width: 1px; }
+body.camera-on .reticle { display: block; }
+
+.reticle-hud {
+  position: absolute; top: calc(100% + 18px); left: 50%; transform: translateX(-50%);
+  font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; white-space: nowrap;
+  color: rgba(232, 238, 247, 0.9); text-shadow: 0 1px 4px rgba(10, 14, 26, 0.9);
+}
+
+/* Night/low-light camera: the feed is black, so bring the sky scene back up —
+   aiming works identically, it just stays beautiful. */
+body.camera-dark .sky-gradient { opacity: 0.9; }
+body.camera-dark .sky-scene { display: block; }
+
+/* ---------- Error banner ---------- */
+
+#err-banner {
+  background: #3d0f22;
+  color: #ffd7e6;
+  border-bottom: 1px solid var(--severe);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* ---------- Status strip ---------- */
+
+.status-strip {
+  display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem;
+  align-items: center; justify-content: space-between;
+  padding: 0.65rem 1rem;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 10;
+}
+
+.status-block { display: flex; align-items: baseline; gap: 0.6rem; min-width: 0; }
+
+.mono { font-family: var(--mono); font-size: 0.8rem; }
+.mono.big { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.02em; }
+.dim { color: var(--ink-dim); }
+
+.aim-block { gap: 1.1rem; }
+.aim-readout { display: flex; align-items: baseline; gap: 0.35rem; }
+.aim-readout label {
+  font-size: 0.62rem; letter-spacing: 0.14em; color: var(--ink-dim); font-weight: 500;
+}
+
+#live-badge {
+  font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.12em; padding: 0.22rem 0.5rem; border-radius: 3px;
+  border: 1px solid var(--line);
+}
+#live-badge[data-state="live"]   { color: var(--calm); border-color: var(--calm); }
+#live-badge[data-state="hold"]   { color: var(--amber); border-color: var(--amber); }
+#live-badge[data-state="stale"]  { color: var(--orange); border-color: var(--orange); }
+#live-badge[data-state="manual"] { color: var(--ink-dim); }
+#live-badge[data-state="off"]    { color: var(--ink-dim); }
+
+#fetch-state.error { color: var(--orange); }
+
+.notice {
+  padding: 0.55rem 1rem; font-size: 0.82rem; color: var(--amber);
+  background: rgba(242, 201, 76, 0.08); border-bottom: 1px solid rgba(242, 201, 76, 0.25);
+}
+.notice-inline { font-size: 0.8rem; color: var(--amber); margin-top: 0.5rem; min-height: 1em; }
+
+/* ---------- Layout ---------- */
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+@media (min-width: 860px) {
+  main { grid-template-columns: minmax(0, 1.4fr) minmax(17rem, 1fr); align-items: start; }
+  .controls { position: sticky; top: 4.2rem; }
+}
+
+/* ---------- FL ladder (the one bold thing) ---------- */
+
+.ladder-wrap { min-height: 20rem; }
+
+.ladder { display: flex; flex-direction: column; gap: 3px; }
+
+.rung {
+  display: grid;
+  grid-template-columns: 8px auto 1fr auto;
+  gap: 0 0.8rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem 0.55rem 0.4rem;
+  background: rgba(19, 42, 74, 0.35);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: border-color 0.25s var(--ease-out), background 0.25s var(--ease-out), transform 0.25s var(--ease-out);
+}
+
+.rung.aimed {
+  border-color: rgba(232, 238, 247, 0.35);
+  background: rgba(30, 58, 95, 0.55);
+  transform: translateX(2px);
+}
+.rung.aimed .rung-fl-label { color: var(--ink); }
+
+.rung-tape { position: relative; width: 8px; height: 100%; min-height: 2.4rem; border-radius: 2px; overflow: hidden; background: rgba(143, 163, 191, 0.12); }
+.rung-fill {
+  position: absolute; inset: 0; border-radius: 2px;
+  transition: background 0.4s var(--ease-out);
+}
+.rung[data-cat="severe"] .rung-fill,
+.rung[data-cat="moderate"] .rung-fill { animation: pulse 2.4s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rung .rung-fill { animation: none !important; }
+  .rung, .rung-fill, .btn { transition: none !important; }
+}
+
+.rung-fl { display: flex; flex-direction: column; min-width: 4.6rem; }
+.rung-fl-label { font-family: var(--mono); font-weight: 600; font-size: 0.95rem; color: var(--ink-dim); letter-spacing: 0.04em; }
+.rung-alt { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-dim); opacity: 0.7; }
+
+.rung-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.rung-cat { font-weight: 500; font-size: 0.92rem; text-wrap: balance; }
+.rung-cloud { font-size: 0.7rem; color: #A8C2E4; letter-spacing: 0.02em; }
+.rung-detail { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-dim); }
+
+.rung[data-cat="severe"] .rung-cat   { color: var(--severe); }
+.rung[data-cat="moderate"] .rung-cat { color: var(--orange); }
+.rung[data-cat="lightmod"] .rung-cat { color: var(--amber); }
+.rung[data-cat="light"] .rung-cat    { color: var(--light); }
+.rung[data-cat="smooth"] .rung-cat   { color: var(--calm); }
+.rung[data-cat="none"] .rung-cat     { color: var(--ink-dim); }
+
+.rung-data { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; text-align: right; }
+.rung-shear, .rung-ri { font-family: var(--mono); font-size: 0.72rem; }
+.rung-where { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-dim); }
+
+/* First-fetch skeleton: rungs shimmer while data is on its way. */
+.ladder.loading .rung {
+  background: linear-gradient(100deg,
+    rgba(19, 42, 74, 0.35) 40%, rgba(63, 224, 197, 0.10) 50%, rgba(19, 42, 74, 0.35) 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .ladder.loading .rung { animation: none; } }
+
+.empty-state {
+  padding: 1.6rem 1.2rem; color: var(--ink-dim);
+  font-size: 0.92rem; line-height: 1.55; text-wrap: pretty; max-width: 34rem; margin: 0 auto;
+  border: 1px dashed rgba(143, 163, 191, 0.35); border-radius: 8px;
+  background: rgba(19, 42, 74, 0.3);
+}
+.steps-title { color: var(--ink); font-weight: 500; margin-bottom: 0.7rem; text-wrap: balance; }
+.steps { margin: 0 0 0.9rem 1.2rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.steps li::marker { color: var(--calm); font-weight: 600; }
+.steps strong { color: var(--ink); }
+.steps-alt { font-size: 0.8rem; opacity: 0.85; }
+
+/* Manual mode: the big aim numbers come from the sliders, not the phone — dim
+   them so live pointing isn't implied. */
+body[data-mode="manual"] .aim-readout .mono.big { color: var(--ink-dim); }
+
+/* The AR reticle marks screen center for aiming — meaningless once the user
+   scrolls down to the controls, so hide it there. */
+body.scrolled .reticle { display: none; }
+
+/* ---------- Controls ---------- */
+
+.controls { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.control-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+
+.btn {
+  font-family: var(--grotesk); font-size: 0.88rem; font-weight: 500;
+  color: var(--ink);
+  background: rgba(30, 58, 95, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.7rem 1.05rem;
+  min-height: 44px;
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out), transform 0.15s ease;
+}
+.btn:hover { background: rgba(30, 58, 95, 0.9); border-color: rgba(143, 163, 191, 0.4); }
+.btn:active { transform: scale(0.98) translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.btn[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.accent { background: rgba(63, 224, 197, 0.14); border-color: rgba(63, 224, 197, 0.5); color: var(--calm); }
+.btn.accent:hover { background: rgba(63, 224, 197, 0.22); }
+.btn.small { padding: 0.5rem 0.8rem; min-height: 40px; font-size: 0.8rem; }
+.btn.wide { width: 100%; }
+
+.seg-group { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg-btn {
+  font-family: var(--grotesk); font-size: 0.8rem; color: var(--ink-dim);
+  background: transparent; border: none; padding: 0.6rem 0.85rem; min-height: 44px;
+  cursor: pointer; border-right: 1px solid var(--line);
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn[aria-pressed="true"] { background: rgba(63, 224, 197, 0.14); color: var(--calm); }
+.seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.inline-control { display: flex; align-items: center; gap: 0.55rem; font-size: 0.8rem; color: var(--ink-dim); }
+.inline-control input[type="range"] { accent-color: var(--calm); width: 8.5rem; }
+.inline-control.toggle { cursor: pointer; }
+.inline-control input[type="checkbox"] { width: 1.15rem; height: 1.15rem; accent-color: var(--calm); }
+
+/* ---------- Manual panel ---------- */
+
+.manual-panel {
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel);
+}
+.manual-panel summary {
+  padding: 0.8rem 1rem; cursor: pointer; font-weight: 500; font-size: 0.9rem;
+  list-style-position: inside;
+}
+.manual-panel summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.manual-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;
+  padding: 0.4rem 1rem 1rem;
+}
+.manual-grid label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.74rem; color: var(--ink-dim); }
+.manual-grid input[type="number"] {
+  background: rgba(10, 14, 26, 0.8); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 5px;
+  padding: 0.55rem 0.6rem; font-size: 0.9rem; min-height: 42px;
+}
+.manual-grid input[type="number"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.manual-grid .slider-label { grid-column: span 2; flex-direction: row; align-items: center; gap: 0.7rem; }
+.manual-grid .slider-label input { flex: 1; accent-color: var(--calm); }
+.manual-grid #locate-btn { align-self: end; }
+.manual-grid #update-btn { grid-column: span 2; }
+.manual-panel .notice-inline { padding: 0 1rem 0.8rem; }
+
+/* ---------- Debug ---------- */
+
+#debug-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  background: rgba(10, 14, 26, 0.92); border-top: 1px solid var(--line);
+  padding: 0.5rem 1rem; max-height: 32dvh; overflow: auto;
+}
+#debug-pre { font-size: 0.66rem; line-height: 1.5; color: var(--calm); white-space: pre-wrap; }
+
+/* ---------- Footer ---------- */
+
+footer {
+  padding: 1.2rem 1rem 1.6rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem; color: var(--ink-dim); line-height: 1.6;
+  max-width: 64rem; margin: 0 auto; width: 100%;
+}
+footer a { color: var(--calm); }
+footer a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.disclaimer { margin-top: 0.4rem; text-wrap: pretty; max-width: 62ch; }

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SkyShear — point-at-the-sky turbulence finder</title>
+<meta name="description" content="Point your phone at the sky and see forecast turbulence potential at flight levels along your line of sight.">
+<meta name="theme-color" content="#0A0E1A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script>
+/* Pre-module safety net: if ANY script fails (syntax error, blocked module,
+   bad deploy), the user sees the reason — never a silent dark page. */
+(function () {
+  function show(msg) {
+    var el = document.getElementById('err-banner');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = 'Something in the app failed to load: ' + msg +
+      ' — reload to retry. If it persists, the site may be mid-deploy.';
+  }
+  window.__ssError = show;
+  window.addEventListener('error', function (e) {
+    show(e.message || (e.target && e.target.src ? 'could not load ' + e.target.src : 'unknown error'));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    show((e.reason && e.reason.message) || 'unhandled promise rejection');
+  });
+})();
+</script>
+</head>
+<body data-mode="manual">
+
+<video id="camera-video" playsinline muted aria-hidden="true"></video>
+<div class="sky-gradient" aria-hidden="true"></div>
+<div class="sky-scene" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="glow"></div>
+  <div class="clouds clouds-far"></div>
+  <div class="clouds clouds-mid"></div>
+  <div class="clouds clouds-near"></div>
+</div>
+<div class="reticle" aria-hidden="true"><span></span><output id="reticle-hud" class="reticle-hud mono"></output></div>
+
+<div id="err-banner" role="alert" hidden></div>
+
+<header class="status-strip">
+  <div class="status-block">
+    <span class="mono" id="coords">no location</span>
+    <span class="mono dim" id="accuracy"></span>
+    <span class="mono dim" id="altitude"></span>
+  </div>
+  <div class="status-block aim-block">
+    <span class="aim-readout"><label>BRG</label><span class="mono big" id="bearing">0°</span></span>
+    <span class="aim-readout"><label>ELV</label><span class="mono big" id="elevation">45°</span></span>
+  </div>
+  <div class="status-block">
+    <span id="live-badge" data-state="off">OFF</span>
+    <span class="mono dim" id="model-time"></span>
+    <span class="mono dim" id="fetch-state"></span>
+  </div>
+</header>
+
+<p id="sensor-message" class="notice" hidden></p>
+
+<main>
+  <section class="ladder-wrap" aria-label="Turbulence by flight level">
+    <div id="ladder" class="ladder" role="list"></div>
+    <div id="empty-state" class="empty-state">
+      <p class="steps-title">See turbulence in the sky above you — three steps:</p>
+      <ol class="steps">
+        <li>Tap <strong>Enable sensors</strong> and allow Motion &amp; Location</li>
+        <li>Point the <strong>back of your phone</strong> at the sky</li>
+        <li>Tap <strong>HOLD</strong> to freeze the aim and read the ladder</li>
+      </ol>
+      <p class="steps-alt">On a desktop or without sensors: open <strong>Manual aim &amp; location</strong>, enter where you are, press <strong>Update forecast</strong>.</p>
+    </div>
+  </section>
+
+  <section class="controls" aria-label="Controls">
+    <div class="control-row primary-row">
+      <button id="enable-btn" type="button" class="btn accent">Enable sensors</button>
+      <button id="hold-btn" type="button" class="btn" aria-pressed="false" disabled>HOLD</button>
+      <button id="refresh-btn" type="button" class="btn">Refresh</button>
+      <button id="camera-btn" type="button" class="btn" aria-pressed="false">Camera</button>
+    </div>
+
+    <div class="control-row">
+      <div id="aircraft-group" class="seg-group" role="group" aria-label="Aircraft type"></div>
+    </div>
+
+    <div class="control-row">
+      <label class="inline-control" for="offset-slider">
+        <span>Compass calibration</span>
+        <input type="range" id="offset-slider" min="-30" max="30" step="1" value="0">
+        <output id="offset-out" class="mono">0°</output>
+      </label>
+      <label class="inline-control toggle" for="detail-toggle">
+        <input type="checkbox" id="detail-toggle">
+        <span>High detail (Ellrod TI — 5× data)</span>
+      </label>
+    </div>
+
+    <details id="manual-panel" class="manual-panel">
+      <summary>Manual aim &amp; location</summary>
+      <div class="manual-grid">
+        <label>Latitude <input type="number" id="lat-input" class="mono" step="0.0001" min="-90" max="90" inputmode="decimal" placeholder="41.8781"></label>
+        <label>Longitude <input type="number" id="lon-input" class="mono" step="0.0001" min="-180" max="180" inputmode="decimal" placeholder="-87.6298"></label>
+        <label>Your altitude (ft) <input type="number" id="alt-input" class="mono" step="1" min="-1400" max="29500" inputmode="numeric" placeholder="0"></label>
+        <button id="locate-btn" type="button" class="btn small">Use my location</button>
+        <label class="slider-label">Bearing
+          <input type="range" id="bearing-slider" min="0" max="359" step="1" value="0">
+          <output id="bearing-out" class="mono">0°</output>
+        </label>
+        <label class="slider-label">Elevation
+          <input type="range" id="elevation-slider" min="0" max="90" step="1" value="45">
+          <output id="elevation-out" class="mono">45°</output>
+        </label>
+        <button id="update-btn" type="button" class="btn accent wide">Update forecast</button>
+      </div>
+      <p id="location-message" class="notice-inline" role="status"></p>
+    </details>
+  </section>
+</main>
+
+<div id="debug-panel" hidden><pre id="debug-pre" class="mono"></pre></div>
+
+<footer>
+  <p>Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
+  © 2026 SkyShear · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+  <p class="disclaimer">SkyShear shows <strong>model-forecast turbulence potential</strong> (NOAA GFS, ~13–25 km grid, hourly)
+  interpolated along your pointing direction — it does not and cannot measure the air in view.
+  Values are computed from real forecast physics — vertical wind shear and Richardson-number stability
+  (the standard clear-air-turbulence diagnostics), plus the Ellrod index in high-detail mode — but the
+  EDR-style number is an uncalibrated estimate, not a measured EDR. Not an aviation weather product;
+  never use for flight decisions.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
