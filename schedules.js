@@ -83,6 +83,10 @@ export async function getFlights(depIata, arrIata) {
 
   const flights = data
     .filter(f => f?.departure?.scheduled)
+    // Drop marketing codeshares (RJ/QR/CM numbers on UA metal etc.) — the
+    // operating carrier's own entry is also in the list and is the one
+    // passengers actually board.
+    .filter(f => !f?.flight?.codeshared)
     .map(f => ({
       airline: f.airline?.name || f.airline?.iata || 'Unknown airline',
       flightIata: f.flight?.iata || f.flight?.icao || '',
