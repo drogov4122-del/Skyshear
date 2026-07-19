@@ -58,6 +58,8 @@ export function buildForecastUrl(points, { models = 'gfs_seamless', forecastDays
   const lons = points.map(p => p.lon.toFixed(3)).join(',');
   // startHour/endHour ("YYYY-MM-DDTHH:00", UTC) window the response to just the
   // hours needed — a 1-hour window is ~24× less hourly data than a full day.
+  // Verified live: windows reaching into the recent past are served as-is
+  // (and past_days is mutually exclusive with hour windows — never combine).
   const timeSel = startHour && endHour
     ? `&start_hour=${startHour}&end_hour=${endHour}`
     : `&forecast_days=${forecastDays}`;

@@ -133,13 +133,19 @@
 <footer>
   <p>Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
   © 2026 SkyShear · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
-  <p class="disclaimer">SkyShear shows <strong>model-forecast turbulence potential</strong> (NOAA GFS, ~13–25 km grid, hourly)
+  <p class="disclaimer">SkyShear shows where the forecast says turbulence is likely — it cannot see or measure the actual air.
+  It presents <strong>model-forecast turbulence potential</strong> (NOAA GFS, ~13–25 km grid, hourly)
   interpolated along your pointing direction — it does not and cannot measure the air in view.
   Values are computed from real forecast physics — vertical wind shear and Richardson-number stability
   (the standard clear-air-turbulence diagnostics), plus the Ellrod index in high-detail mode — but the
   EDR-style number is an uncalibrated estimate, not a measured EDR. Not an aviation weather product;
   never use for flight decisions.</p>
 </footer>
+
+<nav class="tab-bar" aria-label="App sections">
+  <a href="flight.html" class="tab"><span class="tab-icon">✈</span>Flight forecast</a>
+  <a href="index.html" class="tab active" aria-current="page"><span class="tab-icon">◎</span>Point at sky</a>
+</nav>
 
 <script type="module" src="app.js"></script>
 </body>

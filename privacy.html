@@ -28,9 +28,9 @@
 
   <h2>What the app uses, and where it goes</h2>
   <ul>
-    <li><strong>Location</strong> — used on your device to work out which patch of
-    atmosphere you are pointing at. Derived coordinates (latitude/longitude of
-    sky sample points) are sent to the free
+    <li><strong>Location</strong> (Point-at-sky page) — used on your device to work
+    out which patch of atmosphere you are pointing at. Derived coordinates
+    (latitude/longitude of sky sample points) are sent to the free
     <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> weather API to
     retrieve the forecast. No identifier, account, or device information
     accompanies those requests, and SkyShear does not store your location
@@ -40,18 +40,30 @@
     <li><strong>Camera</strong> (optional) — if you enable the AR background, the
     camera image is shown on screen only. It is never recorded, stored, or
     transmitted.</li>
+    <li><strong>Flight search</strong> (Flight forecast page) — the origin and
+    destination airports you pick and the departure time are sent to Open-Meteo
+    (as route coordinates) to fetch the forecast. If you optionally add an
+    AviationStack API key, the airport pair is also sent to
+    <a href="https://aviationstack.com/" rel="noopener">AviationStack</a> to list
+    real flights. The Flight forecast page does not use your location, motion
+    sensors, or camera.</li>
   </ul>
 
   <h2>What we store</h2>
-  <p>Nothing about you. The app caches its own program files on your device so it
-  opens quickly (standard web-app caching). That cache contains no personal
-  data and is removed when you uninstall the app or clear site data.</p>
+  <p>On your device only: the app caches its program files so it opens quickly,
+  and — if you use the optional flight list — stores your AviationStack API key
+  and a one-day cache of flight results in your browser's local storage. None of
+  this leaves your device except as described above, and it is removed when you
+  clear site data or uninstall the app. SkyShear has no servers and receives
+  nothing.</p>
 
   <h2>Third parties</h2>
-  <p>The only external service contacted for data is Open-Meteo
-  (<a href="https://open-meteo.com/en/terms" rel="noopener">their terms</a>);
-  fonts load from Google Fonts. Neither receives any personal information from
-  SkyShear beyond the technical minimum of an HTTP request.</p>
+  <p>External services contacted for data: Open-Meteo
+  (<a href="https://open-meteo.com/en/terms" rel="noopener">their terms</a>) —
+  always; AviationStack (<a href="https://aviationstack.com/terms" rel="noopener">their
+  terms</a>) — only if you add your own key, which receives that key and the
+  searched route; and Google Fonts for typefaces. None receives any personal
+  information from SkyShear beyond the technical minimum of an HTTP request.</p>
 
   <h2>Contact</h2>
   <p>Questions: <a href="mailto:drogov4122@gmail.com">drogov4122@gmail.com</a></p>

@@ -90,6 +90,19 @@ test/        node --test known-answer suites for the pure modules
 The pure modules run identically in the browser and in Node — no build step,
 no dependencies, no API keys.
 
+## Validation against real pilot reports
+
+The forecast pipeline is cross-checked against live PIREPs (pilot turbulence
+reports) from NOAA's aviationweather.gov API: for each report, SkyShear's
+category is computed at the reported position, flight level, and hour, then
+compared with what the pilot actually logged. Latest run (45 scored reports
+across CONUS, 2026-07-18): **96% within one severity class, zero hard false
+alarms** (never forecast moderate-plus where pilots reported smooth air), one
+missed moderate event, 56% exact class match — with errors leaning
+conservative (forecasting light where pilots report smooth). Re-run any time
+with `node validate_pireps.mjs` (script: `validate_pireps.mjs` in this repo;
+aviationweather.gov has no CORS so this check runs offline, not in-app).
+
 ## Publishing to Google Play
 
 See [PLAY_STORE_GUIDE.md](PLAY_STORE_GUIDE.md) for the full step-by-step

@@ -101,11 +101,21 @@ requirements (manifest, service worker, icons, HTTPS on Pages).
 1. Play Console → **Create app** → name *SkyShear*, App (not game), Free.
 2. **App content** section (all required, ~20 min):
    - Privacy policy URL — required. Already done: `https://drogov4122-del.github.io/Skyshear/privacy.html`
-     (no accounts, no analytics; location and motion data processed
-     on-device only, sent nowhere except anonymous weather-forecast
-     coordinates to Open-Meteo).
-   - Data safety form: declare **Location — collected, not shared, not stored**
-     (coordinates are sent to Open-Meteo to fetch forecasts).
+     (no accounts, no analytics; location/motion processed on-device; weather
+     coordinates go to Open-Meteo; optional flight lists send the user's own
+     AviationStack key + searched route to AviationStack).
+   - Data safety form (Play counts data sent to ANY third party as "shared"):
+     - **Location (approximate + precise)** — collected AND **shared** (with
+       Open-Meteo), purpose App functionality, processed ephemerally, not
+       stored, optional (manual mode exists).
+     - **App activity (app interactions)** — collected AND **shared** (route
+       searches sent to AviationStack), optional, user-initiated only.
+     - The AviationStack API key is user-provided, stored only on-device, and
+       transmitted only to AviationStack for authentication — declare under
+       "User IDs/auth info: shared with AviationStack, optional" if the form
+       flags it.
+     - Keep privacy.html and this form consistent — mismatches are a common
+       Play rejection trigger.
    - Content rating questionnaire: Utility, no user content → Everyone.
    - Ads: No. Target audience: 18+ (avoids child-policy overhead).
 3. **Release → Testing → Closed testing** → create track, upload

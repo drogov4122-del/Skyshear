@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SkyShear — flight turbulence forecast</title>
+<meta name="description" content="Search your flight and see when to expect turbulence — a full route profile and 3D globe, forecast from real atmospheric physics.">
+<meta name="theme-color" content="#0A0E1A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function () {
+  function show(msg) {
+    var el = document.getElementById('err-banner');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = 'Something in the app failed to load: ' + msg + ' — reload to retry.';
+  }
+  window.__ssError = show;
+  window.addEventListener('error', function (e) {
+    show(e.message || (e.target && e.target.src ? 'could not load ' + e.target.src : 'unknown error'));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    show((e.reason && e.reason.message) || 'unhandled promise rejection');
+  });
+})();
+</script>
+</head>
+<body class="flight-page">
+
+<div class="sky-gradient" aria-hidden="true"></div>
+<div class="sky-scene" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="glow"></div>
+  <div class="clouds clouds-far"></div>
+  <div class="clouds clouds-mid"></div>
+  <div class="clouds clouds-near"></div>
+</div>
+
+<div id="err-banner" role="alert" hidden></div>
+
+<header class="flight-header">
+  <div>
+    <h1>Flight turbulence forecast</h1>
+    <p class="flight-tagline">Pick two airports — no account or API key needed.</p>
+  </div>
+  <button id="settings-btn" type="button" class="icon-btn" aria-label="Settings">⚙</button>
+</header>
+
+<main class="flight-main">
+  <section class="search-card" aria-label="Flight search">
+    <div class="airport-row">
+      <div class="airport-field">
+        <label for="origin-input">From</label>
+        <input id="origin-input" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="City or airport (ORD)">
+        <div id="origin-list" class="ac-list" role="listbox" hidden></div>
+      </div>
+      <button id="swap-btn" type="button" class="icon-btn" aria-label="Swap origin and destination">⇄</button>
+      <div class="airport-field">
+        <label for="dest-input">To</label>
+        <input id="dest-input" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="City or airport (DEN)">
+        <div id="dest-list" class="ac-list" role="listbox" hidden></div>
+      </div>
+    </div>
+    <div class="search-row">
+      <label class="dep-label">Departure (your local time)
+        <input id="dep-input" type="datetime-local">
+      </label>
+      <button id="search-btn" type="button" class="btn accent">Search</button>
+    </div>
+    <p id="search-message" class="notice-inline" role="status"></p>
+  </section>
+
+  <section id="flights-section" class="flights-section" hidden aria-label="Flights on this route">
+    <h2>Flights on this route today</h2>
+    <div id="flight-list" class="flight-list"></div>
+    <p id="flights-message" class="notice-inline"></p>
+  </section>
+
+  <section id="result-section" hidden aria-label="Turbulence forecast">
+    <p id="result-summary" class="result-summary"></p>
+
+    <div class="result-block">
+      <h2>When to expect it</h2>
+      <div id="profile-chart" class="profile-chart"></div>
+      <div class="chart-legend">
+        <span><i style="background:#3FE0C5"></i>Smooth</span>
+        <span><i style="background:#E8E37A"></i>Light</span>
+        <span><i style="background:#F2C94C"></i>Light–Mod</span>
+        <span><i style="background:#FF8A3D"></i>Moderate</span>
+        <span><i style="background:#FF3D8B"></i>Mod–Severe</span>
+      </div>
+      <p class="chart-caption">Forecast potential — how it feels varies by aircraft.</p>
+    </div>
+
+    <div class="control-row" id="flight-aircraft-row">
+      <p class="aircraft-caption">Ride comfort by aircraft size — most airline flights are “Commercial jet”:</p>
+      <div id="aircraft-group" class="seg-group" role="group" aria-label="Aircraft type"></div>
+    </div>
+
+    <div class="result-block">
+      <h2>Route</h2>
+      <div class="globe-wrap"><canvas id="globe-canvas" aria-label="3D globe showing the flight route colored by turbulence"></canvas></div>
+      <p class="globe-hint">Drag to spin · route colored by forecast severity · typical great-circle routing — actual flights deviate</p>
+    </div>
+
+    <div class="result-block">
+      <h2>Segment details</h2>
+      <div id="segment-list" class="segment-list"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="settings-dialog" class="settings-dialog">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label class="settings-label">AviationStack API key (optional — powers the real flight list)
+      <input id="api-key-input" type="password" class="mono" placeholder="paste key" autocomplete="off">
+    </label>
+    <p class="settings-note">Free at <a href="https://aviationstack.com" target="_blank" rel="noopener">aviationstack.com</a> (100 lookups/month).
+    Stored only in this browser — never sent anywhere except AviationStack.
+    To remove the key, clear the field and Save.</p>
+    <div class="settings-actions">
+      <button value="save" id="settings-save" class="btn accent">Save</button>
+      <button value="cancel" class="btn">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<footer>
+  <p>Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
+  Airport data by <a href="https://ourairports.com/data/" rel="noopener">OurAirports</a> (public domain).
+  Land outlines derived from <a href="https://www.naturalearthdata.com/" rel="noopener">Natural Earth</a> (public domain).
+  © 2026 SkyShear · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+  <p class="disclaimer">Forecast turbulence potential along a modeled great-circle route (NOAA GFS via Open-Meteo,
+  ~13–25 km grid, hourly), evaluated at the hour your flight passes each point. Computed from vertical wind shear and
+  Richardson-number stability — real forecast physics, but estimates, not measurements, and actual routings differ.
+  Not an aviation weather product; never use for flight decisions.</p>
+</footer>
+
+<nav class="tab-bar" aria-label="App sections">
+  <a href="flight.html" class="tab active" aria-current="page"><span class="tab-icon">✈</span>Flight forecast</a>
+  <a href="index.html" class="tab"><span class="tab-icon">◎</span>Point at sky</a>
+</nav>
+
+<script type="module" src="flightapp.js"></script>
+</body>
+</html>
