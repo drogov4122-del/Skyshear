@@ -5,7 +5,7 @@
 
 import {
   buildForecastUrl, parseProfile, layerAt, categorize, pseudoEdr, feltCategory,
-  cloudCoverAt, cloudTypeFor, nearestHourIndex, isoHourUTC, CATEGORIES,
+  cloudCoverAt, cloudTypeFor, causeFor, nearestHourIndex, isoHourUTC, CATEGORIES,
 } from './turbulence.js';
 
 const LOW_LEVEL_M = 3000;   // below this, negative Ri is boundary-layer convection
@@ -61,8 +61,10 @@ export function evaluateRoute(routePoints, weatherByPoint, departureMs, aircraft
     // normal climb-out chop, not severe clear-air turbulence. Cap the label.
     const lowLevel = sampleAlt < LOW_LEVEL_M;
     if (lowLevel && felt && felt.rank > LIGHTMOD.rank) felt = LIGHTMOD;
-    const cloud = cloudTypeFor(sampleAlt, cloudCoverAt(profile, sampleAlt));
-    return { point: pt, layer, cat, edr, felt, cloud, lowLevel, noData: false };
+    const cover = cloudCoverAt(profile, sampleAlt);
+    const cloud = cloudTypeFor(sampleAlt, cover);
+    const cause = causeFor(layer, profile, sampleAlt, cover);
+    return { point: pt, layer, cat, edr, felt, cloud, cause, lowLevel, noData: false };
   });
 }
 

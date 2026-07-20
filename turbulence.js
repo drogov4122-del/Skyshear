@@ -230,6 +230,35 @@ export function cloudTypeFor(altM, coverPct) {
 }
 
 /**
+ * Attribute the LIKELY physical cause of turbulence at a point, from the same
+ * profile data. Heuristics follow standard CAT climatology:
+ *  - unstable layer (N² ≤ 0) + meaningful cloud → convection/storms
+ *  - strong winds aloft (≥ 30 m/s above ~25,000 ft) → jet-stream shear
+ *  - low altitude (< ~10,000 ft) → low-level shear / thermals
+ *  - otherwise → shear between stable air layers (Kelvin–Helmholtz)
+ * Returns { key, label, icon } or null for smooth/no-data.
+ */
+export function causeFor(layer, profile, sampleAltM, coverPct) {
+  if (!layer || !Number.isFinite(layer.Ri)) return null;
+  if (layer.Ri >= 10) return null; // smooth — no cause worth naming
+  const uv = interpolateUV(profile, sampleAltM);
+  const windMs = uv ? Math.hypot(uv.u, uv.v) : 0;
+  if (layer.N2 <= 1e-6 && (coverPct ?? 0) >= 40) {
+    return { key: 'storm', label: 'Convection — storm activity' };
+  }
+  if (layer.N2 <= 1e-6) {
+    return { key: 'thermal', label: 'Unstable air — thermals/convection' };
+  }
+  if (windMs >= 30 && sampleAltM > 7600) {
+    return { key: 'jet', label: 'Jet stream wind shear' };
+  }
+  if (sampleAltM < 3000) {
+    return { key: 'lowlevel', label: 'Low-level wind shear' };
+  }
+  return { key: 'shear', label: 'Shear between air layers' };
+}
+
+/**
  * Aircraft classes. How bumpy the same air feels depends on wing loading and
  * speed — a C172 gets tossed where a 777 barely ripples. Thresholds are applied
  * to the ESTIMATED EDR (pseudoEdr) and follow the shape of ICAO Annex 3 /

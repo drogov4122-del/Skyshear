@@ -1,14 +1,9 @@
-// flightapp.js — controller for the flight-forecast page.
-// Flow: airports autocomplete → modeled route → per-hour weather along it →
-// profile chart + 3D globe + segment list. Flight list (AviationStack) is an
-// optional layer; everything else needs no key.
+// flightapp.js — the flight SEARCH page. Airports + date → vertical list of
+// remaining flights (with airline logos) → each card opens the big-format
+// forecast page in a new tab. Also lists saved forecasts for offline use.
+// The forecast itself lives on forecast.html (forecastapp.js).
 
-import { buildFlightPath, formatDuration } from './route.js';
-import { fetchRouteWeather, evaluateRoute, reFeel, worstSegments } from './flightcast.js';
-import { renderProfileChart } from './profilechart.js';
-import { createGlobe } from './globe.js';
 import { getFlights, getApiKey, setApiKey, ScheduleError } from './schedules.js';
-import { AIRCRAFT_CLASSES } from './turbulence.js';
 
 const $ = id => document.getElementById(id);
 
@@ -17,12 +12,7 @@ const S = {
   byIata: new Map(),
   origin: null,
   dest: null,
-  aircraftClass: 'heavy',
-  rows: null,
-  meta: null,
-  globe: null,
   searching: false,
-  selectedFlight: null, // { iata, airline } once the user taps a flight card
 };
 
 // ---------------- Airport data + autocomplete ----------------
@@ -53,7 +43,7 @@ function searchAirports(q) {
 
 function wireAutocomplete(inputId, listId, assign) {
   const input = $(inputId), list = $(listId);
-  let active = -1; // keyboard-highlighted option index
+  let active = -1;
 
   input.setAttribute('role', 'combobox');
   input.setAttribute('aria-expanded', 'false');
@@ -65,7 +55,6 @@ function wireAutocomplete(inputId, listId, assign) {
     input.setAttribute('aria-expanded', String(open));
     if (!open) { active = -1; input.removeAttribute('aria-activedescendant'); }
   };
-
   const highlight = (idx) => {
     const items = list.querySelectorAll('.ac-item');
     active = idx;
@@ -76,7 +65,6 @@ function wireAutocomplete(inputId, listId, assign) {
     if (idx >= 0 && items[idx]) input.setAttribute('aria-activedescendant', items[idx].id);
     else input.removeAttribute('aria-activedescendant');
   };
-
   const renderList = (items) => {
     list.textContent = '';
     setExpanded(items.length > 0);
@@ -97,25 +85,17 @@ function wireAutocomplete(inputId, listId, assign) {
     });
   };
 
-  input.addEventListener('input', () => {
-    assign(null);
-    renderList(searchAirports(input.value));
-  });
+  input.addEventListener('input', () => { assign(null); renderList(searchAirports(input.value)); });
   input.addEventListener('focus', () => {
     if (!input.dataset.touched) { input.dataset.touched = '1'; return; }
     renderList(searchAirports(input.value));
   });
   input.addEventListener('keydown', (e) => {
     const items = list.querySelectorAll('.ac-item');
-    if (e.key === 'ArrowDown' && !list.hidden && items.length) {
-      e.preventDefault(); highlight((active + 1) % items.length);
-    } else if (e.key === 'ArrowUp' && !list.hidden && items.length) {
-      e.preventDefault(); highlight((active - 1 + items.length) % items.length);
-    } else if (e.key === 'Escape') {
-      setExpanded(false);
-    } else if (e.key === 'Enter' && !list.hidden && active >= 0 && items[active]) {
-      e.preventDefault(); items[active].click();
-    }
+    if (e.key === 'ArrowDown' && !list.hidden && items.length) { e.preventDefault(); highlight((active + 1) % items.length); }
+    else if (e.key === 'ArrowUp' && !list.hidden && items.length) { e.preventDefault(); highlight((active - 1 + items.length) % items.length); }
+    else if (e.key === 'Escape') setExpanded(false);
+    else if (e.key === 'Enter' && !list.hidden && active >= 0 && items[active]) { e.preventDefault(); items[active].click(); }
   });
   document.addEventListener('click', (e) => {
     if (!list.contains(e.target) && e.target !== input) setExpanded(false);
@@ -126,7 +106,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/** Resolve free-typed text to an airport if the user didn't click a suggestion. */
 function resolveAirport(inputId, current) {
   if (current) return current;
   const raw = $(inputId).value.trim().toUpperCase();
@@ -136,145 +115,90 @@ function resolveAirport(inputId, current) {
   return hits[0] || null;
 }
 
-// ---------------- Search + forecast ----------------
+// ---------------- Search → flight list ----------------
 
-function departureMs() {
-  const v = $('dep-input').value;
-  const ms = v ? new Date(v).getTime() : Date.now();
-  return Number.isFinite(ms) ? ms : Date.now();
+function searchDateStr() { return $('dep-date').value; } // YYYY-MM-DD (viewer-local)
+function isTodaySearch() { return searchDateStr() === localDateStr(new Date()); }
+function localDateStr(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/**
- * Turbli-style flow: Search → SELECT YOUR FLIGHT → forecast.
- * Search validates the route and shows the flight list first; the forecast
- * runs only after a flight (or "use custom time") is chosen. Fallback paths
- * (no key, future date, list failure) go straight to the forecast with the
- * picked departure time so the app never dead-ends.
- */
+function forecastUrl(depMs, flightIata = '', airline = '') {
+  const u = new URLSearchParams({ from: S.origin.i, to: S.dest.i, dep: String(depMs) });
+  if (flightIata) u.set('flight', flightIata);
+  if (airline) u.set('airline', airline);
+  return `forecast.html?${u}`;
+}
+
+function logoEl(airlineIata, airlineName) {
+  const wrap = document.createElement('span');
+  wrap.className = 'al-logo';
+  const initials = (airlineIata || airlineName.slice(0, 2)).toUpperCase();
+  if (airlineIata) {
+    const img = document.createElement('img');
+    img.src = `https://pics.avs.io/72/72/${encodeURIComponent(airlineIata)}.png`;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.addEventListener('error', () => { wrap.textContent = initials; wrap.classList.add('al-logo-fallback'); });
+    wrap.appendChild(img);
+  } else {
+    wrap.textContent = initials;
+    wrap.classList.add('al-logo-fallback');
+  }
+  return wrap;
+}
+
 async function runSearch() {
   if (S.searching) return;
   const msg = $('search-message');
   msg.textContent = '';
+  const btn = $('search-btn');
+  S.searching = true;
+  btn.disabled = true;
+  btn.textContent = 'Searching…';
   try {
     S.origin = resolveAirport('origin-input', S.origin);
     S.dest = resolveAirport('dest-input', S.dest);
     if (!S.origin || !S.dest) { msg.textContent = 'Pick both airports (type a city or code, then tap a suggestion).'; return; }
     if (S.origin.i === S.dest.i) { msg.textContent = 'Origin and destination are the same airport.'; return; }
-    if (!validDeparture(msg)) return;
+    const dateStr = searchDateStr();
+    if (!dateStr) { msg.textContent = 'Pick a travel date.'; return; }
+    const dayStart = new Date(`${dateStr}T00:00`).getTime();
+    if (dayStart > Date.now() + 7 * 86400000) { msg.textContent = 'Forecasts are only reliable ~7 days out — pick an earlier date.'; return; }
+    if (dayStart < Date.now() - 86400000 * 1.5) { msg.textContent = 'That date is in the past.'; return; }
 
-    S.selectedFlight = null;
-    $('result-section').hidden = true;
+    const section = $('flights-section');
+    const listEl = $('flight-list');
+    const fmsg = $('flights-message');
+    section.hidden = false;
+    listEl.textContent = '';
 
-    // Step 2 — flight selection. AviationStack lists today's flights only.
-    const isToday = new Date(departureMs()).toDateString() === new Date().toDateString();
-    if (isToday && getApiKey()) {
-      const shown = await showFlightChooser();
-      if (shown) return; // wait for the user's tap — forecast runs from there
-    } else if (isToday) {
-      // No key: the chooser can't populate — SAY SO instead of silently skipping.
-      $('flights-section').hidden = false;
-      $('flight-list').textContent = '';
-      $('flights-message').textContent =
-        'To pick from real flights, add your free AviationStack key: tap the ⚙ gear (top right), paste the key, Save, then Search again. Forecasting for your chosen time meanwhile.';
+    if (isTodaySearch() && getApiKey()) {
+      fmsg.textContent = 'Finding flights…';
+      try {
+        let flights = await getFlights(S.origin.i, S.dest.i);
+        // Remaining flights only — nobody needs this morning's departures.
+        const cutoff = Date.now() - 20 * 60000;
+        flights = flights.filter(f => new Date(f.depTime).getTime() >= cutoff);
+        if (flights.length) {
+          fmsg.textContent = 'Tap your flight — the forecast opens in a new tab. (List can include partner/codeshare numbers — same plane, different number.)';
+          for (const f of flights.slice(0, 20)) renderFlightCard(listEl, f);
+        } else {
+          fmsg.textContent = 'No remaining flights on this route today — use a custom departure time below.';
+        }
+      } catch (e) {
+        fmsg.textContent = (e instanceof ScheduleError ? e.message : 'Flight list unavailable') + ' Use a custom time below.';
+      }
+    } else if (isTodaySearch()) {
+      fmsg.textContent = 'To pick from real flights, add your free AviationStack key: tap the ⚙ gear (top right). Or use a custom departure time below.';
     } else {
-      $('flights-section').hidden = true;
-      msg.textContent = 'Flight lists cover today only — forecasting for your chosen time.';
+      fmsg.textContent = 'Flight lists are available for today only — pick your departure time below.';
     }
-    // Fallback: forecast directly with the departure-time picker value.
-    await runForecast(departureMs());
+    renderCustomCard(listEl);
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     msg.textContent = (e && e.message) || 'Search failed — try again.';
-  }
-}
-
-function validDeparture(msg) {
-  const depMs = departureMs();
-  const horizon = Date.now() + 7 * 86400000;
-  if (depMs > horizon) { msg.textContent = 'Forecasts are only reliable ~7 days out — pick an earlier departure.'; return false; }
-  if (depMs < Date.now() - 86400000) { msg.textContent = 'That departure is in the past — pick a future time.'; return false; }
-  return true;
-}
-
-/** Show the flight list in chooser mode. Returns true if a choosable list rendered. */
-async function showFlightChooser() {
-  const section = $('flights-section');
-  const listEl = $('flight-list');
-  const msg = $('flights-message');
-  section.hidden = false;
-  listEl.textContent = '';
-  msg.textContent = 'Finding flights…';
-  try {
-    const flights = await getFlights(S.origin.i, S.dest.i);
-    if (!flights.length) {
-      msg.textContent = 'No flights found on this route today — using your chosen departure time instead.';
-      return false;
-    }
-    msg.textContent = 'Tap your flight to get its turbulence forecast. (List can include partner/codeshare flight numbers — same plane, different number.)';
-    for (const f of flights.slice(0, 14)) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'flight-card';
-      const dep = new Date(f.depTime);
-      b.innerHTML = `<strong>${escapeHtml(f.flightIata || f.airline)}</strong>` +
-        `<span>${escapeHtml(f.airline)}</span>` +
-        `<span class="mono">${dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` +
-        (f.aircraft ? `<span class="mono dim">${escapeHtml(f.aircraft)}</span>` : '');
-      b.addEventListener('click', () => {
-        if (S.searching) return;
-        S.selectedFlight = { iata: f.flightIata || '', airline: f.airline };
-        $('dep-input').value = toLocalInputValue(dep);
-        for (const c of listEl.querySelectorAll('.flight-card')) c.classList.toggle('selected', c === b);
-        runForecast(dep.getTime()).catch(() => {});
-      });
-      listEl.appendChild(b);
-    }
-    // Always offer the escape hatch.
-    const custom = document.createElement('button');
-    custom.type = 'button';
-    custom.className = 'flight-card flight-card-custom';
-    custom.innerHTML = `<strong>Custom time</strong><span>Not listed? Forecast for the departure time picked above</span>`;
-    custom.addEventListener('click', () => {
-      if (S.searching) return;
-      S.selectedFlight = null;
-      for (const c of listEl.querySelectorAll('.flight-card')) c.classList.remove('selected');
-      runForecast(departureMs()).catch(() => {});
-    });
-    listEl.appendChild(custom);
-    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    return true;
-  } catch (e) {
-    msg.textContent = (e instanceof ScheduleError ? e.message : 'Flight list unavailable') + ' — forecasting for your chosen time.';
-    return false;
-  }
-}
-
-async function runForecast(depMs) {
-  if (S.searching) return;
-  const msg = $('search-message');
-  const btn = $('search-btn');
-  msg.textContent = '';
-  S.searching = true;
-  btn.disabled = true;
-  btn.textContent = 'Forecasting…';
-  try {
-    const fp = buildFlightPath({ lat: S.origin.la, lon: S.origin.lo }, { lat: S.dest.la, lon: S.dest.lo });
-    if (!fp) { msg.textContent = 'Could not build a route between those airports.'; return; }
-
-    const weather = await fetchRouteWeather(fp.points, depMs);
-    S.rows = evaluateRoute(fp.points, weather, depMs, S.aircraftClass);
-    S.meta = {
-      durationMin: fp.durationMin,
-      cruiseFt: fp.cruiseFt,
-      totalKm: fp.totalKm,
-      departureMs: depMs,
-      originIata: S.origin.i,
-      destIata: S.dest.i,
-    };
-    renderResults();
-    $('result-section').hidden = false;
-    $('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) {
-    msg.textContent = (e && e.message) || 'Forecast failed — try again.';
   } finally {
     S.searching = false;
     btn.disabled = false;
@@ -282,95 +206,97 @@ async function runForecast(depMs) {
   }
 }
 
-function renderResults() {
-  const worst = worstSegments(S.rows);
-  renderProfileChart($('profile-chart'), S.rows, S.meta, worst);
-  renderSummary(worst);
-  renderSegments();
-  if (S.globe) {
-    S.globe.setRoute(S.rows, S.meta.originIata, S.meta.destIata);
-    S.globe.start();
+function renderFlightCard(listEl, f) {
+  const dep = new Date(f.depTime);
+  const a = document.createElement('a');
+  a.className = 'flight-row';
+  a.href = forecastUrl(dep.getTime(), f.flightIata, f.airline);
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.append(logoEl(f.airlineIata, f.airline));
+  const info = document.createElement('span');
+  info.className = 'flight-row-info';
+  info.innerHTML = `<strong>${escapeHtml(f.flightIata || f.airline)}</strong><span>${escapeHtml(f.airline)}${f.aircraft ? ' · ' + escapeHtml(f.aircraft) : ''}</span>`;
+  a.append(info);
+  const t = document.createElement('span');
+  t.className = 'flight-row-time mono';
+  t.textContent = dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  a.append(t);
+  listEl.append(a);
+}
+
+function renderCustomCard(listEl) {
+  const div = document.createElement('div');
+  div.className = 'flight-row flight-row-custom';
+  div.innerHTML = `<span class="al-logo al-logo-fallback">✈</span>` +
+    `<span class="flight-row-info"><strong>Custom departure</strong><span>Not listed / private flight</span></span>`;
+  const time = document.createElement('input');
+  time.type = 'time';
+  time.value = '12:00';
+  time.className = 'mono custom-time-input';
+  time.setAttribute('aria-label', 'Custom departure time');
+  const go = document.createElement('a');
+  go.className = 'btn accent small';
+  go.textContent = 'Forecast';
+  go.target = '_blank';
+  go.rel = 'noopener';
+  go.href = '#';
+  go.addEventListener('click', (e) => {
+    const depMs = new Date(`${searchDateStr()}T${time.value || '12:00'}`).getTime();
+    if (!Number.isFinite(depMs)) { e.preventDefault(); return; }
+    go.href = forecastUrl(depMs);
+  });
+  div.append(time, go);
+  listEl.append(div);
+}
+
+// ---------------- Saved forecasts (offline shelf) ----------------
+
+function renderSaved() {
+  const box = $('saved-list');
+  const section = $('saved-section');
+  box.textContent = '';
+  let idx = [];
+  try { idx = JSON.parse(localStorage.getItem('ss_fc_index') || '[]'); } catch { /* ignore */ }
+  const items = [];
+  for (const key of idx) {
+    try {
+      const p = JSON.parse(localStorage.getItem(key) || 'null');
+      if (p?.meta) items.push({ key, ...p });
+    } catch { /* ignore */ }
   }
-}
-
-function renderSummary(worst) {
-  const m = S.meta;
-  const who = S.selectedFlight ? `${S.selectedFlight.iata} (${S.selectedFlight.airline}) · ` : '';
-  const base = `${who}${m.originIata} → ${m.destIata} · ${Math.round(m.totalKm).toLocaleString()} km · ` +
-    `${formatDuration(m.durationMin)} · cruise FL${Math.round(m.cruiseFt / 100)} (${m.cruiseFt.toLocaleString()} ft)`;
-  let verdict;
-  if (!worst.length) {
-    verdict = 'Mostly smooth conditions forecast.';
-  } else {
-    const w = worst[0];
-    const range = (w.toMin - w.fromMin) < 5
-      ? `around ${fmtHM(w.fromMin)}`
-      : `${fmtHM(w.fromMin)}–${fmtHM(w.toMin)}`;
-    verdict = `${w.label.replace(' potential', '')} turbulence possible ${range} into the flight.`;
+  section.hidden = !items.length;
+  for (const it of items.slice(0, 6)) {
+    const a = document.createElement('a');
+    a.className = 'flight-row';
+    const m = it.meta;
+    a.href = `forecast.html?from=${m.originIata}&to=${m.destIata}&dep=${m.departureMs}` +
+      (it.flight ? `&flight=${encodeURIComponent(it.flight)}&airline=${encodeURIComponent(it.airline || '')}` : '');
+    a.innerHTML = `<span class="al-logo al-logo-fallback">💾</span>` +
+      `<span class="flight-row-info"><strong>${escapeHtml(it.flight || `${m.originIata} → ${m.destIata}`)}</strong>` +
+      `<span>${m.originIata} → ${m.destIata} · departs ${new Date(m.departureMs).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span></span>` +
+      `<span class="flight-row-time mono">saved</span>`;
+    box.append(a);
   }
-  $('result-summary').textContent = `${base} — ${verdict} Modeled route · times in your local time.`;
-}
-
-function fmtHM(min) {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
-  return `${h}:${String(m).padStart(2, '0')}`;
-}
-
-function renderSegments() {
-  const list = $('segment-list');
-  list.textContent = '';
-  const step = Math.max(1, Math.floor(S.rows.length / 12));
-  for (let i = 0; i < S.rows.length; i += step) {
-    const r = S.rows[i];
-    const div = document.createElement('div');
-    div.className = 'segment-row';
-    if (r.noData) {
-      div.innerHTML = `<span class="seg-time mono">${fmtHM(r.point.tMin)}</span>` +
-        `<span class="seg-phase">${r.point.phase}</span><span class="seg-cat dim">near airport</span>`;
-    } else {
-      const OKTA_WORD = { FEW: 'Few', SCT: 'Scattered', BKN: 'Broken', OVC: 'Overcast' };
-      const cloudTxt = !r.cloud ? '' : r.cloud.okta === 'CLR' ? '☀ Clear'
-        : `☁ ${OKTA_WORD[r.cloud.okta] || r.cloud.okta} ${r.cloud.genus}`;
-      div.dataset.cat = r.felt?.key || 'none';
-      div.innerHTML =
-        `<span class="seg-time mono">${fmtHM(r.point.tMin)}</span>` +
-        `<span class="seg-fl mono">FL${String(Math.round(r.point.altFt / 100)).padStart(3, '0')}</span>` +
-        `<span class="seg-cat">${r.felt ? r.felt.label.replace(' potential', '') : '—'}</span>` +
-        `<span class="seg-cloud">${cloudTxt}</span>` +
-        `<span class="seg-data mono" title="Vertical wind shear">shear ${r.layer.VWS_kt_kft.toFixed(1)} kt/1,000 ft</span>`;
-    }
-    list.appendChild(div);
-  }
-}
-
-function toLocalInputValue(d) {
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // ---------------- Init ----------------
 
 async function init() {
-  // One-tap key install: opening flight.html#avkey=XXXX saves the AviationStack
-  // key on this device and cleans the URL (hash fragments never reach servers
-  // or logs). Removes the paste-on-phone friction entirely.
+  // One-tap key install via #avkey= (hash never reaches servers/logs).
   const hashKey = new URLSearchParams(location.hash.slice(1)).get('avkey');
   if (hashKey) {
     setApiKey(hashKey);
     history.replaceState(null, '', location.pathname + location.search);
-    const msg = $('search-message');
-    msg.textContent = getApiKey()
+    $('search-message').textContent = getApiKey()
       ? 'Flight-list key saved on this device ✓ — search a route and pick your flight.'
       : 'This browser is blocking storage (private mode?) — the key could not be saved.';
   }
 
-  // Default departure: next half hour, local.
-  const now = new Date(Date.now() + 30 * 60000);
-  now.setMinutes(now.getMinutes() < 30 ? 30 : 0, 0, 0);
-  if (now.getMinutes() === 0) now.setHours(now.getHours() + 1);
-  $('dep-input').value = toLocalInputValue(now);
-  // Native picker floor: yesterday (matching the 24 h-past validation window).
-  $('dep-input').min = toLocalInputValue(new Date(Date.now() - 86400000));
+  const today = new Date();
+  $('dep-date').value = localDateStr(today);
+  $('dep-date').min = localDateStr(today);
+  $('dep-date').max = localDateStr(new Date(Date.now() + 7 * 86400000));
 
   wireAutocomplete('origin-input', 'origin-list', a => { S.origin = a; });
   wireAutocomplete('dest-input', 'dest-list', a => { S.dest = a; });
@@ -382,35 +308,11 @@ async function init() {
     $('dest-input').value = oi;
   });
 
-  $('search-btn').addEventListener('click', runSearch);
+  $('search-btn').addEventListener('click', () => { runSearch().catch(() => {}); });
   for (const id of ['origin-input', 'dest-input']) {
-    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') runSearch().catch(() => {}); });
   }
 
-  // Aircraft class selector (same pattern as point mode)
-  const group = $('aircraft-group');
-  for (const cls of AIRCRAFT_CLASSES) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'seg-btn';
-    b.textContent = cls.label;
-    b.dataset.key = cls.key;
-    b.setAttribute('aria-pressed', String(cls.key === S.aircraftClass));
-    b.addEventListener('click', () => {
-      if (S.searching) return; // don't re-render stale rows mid-search
-      S.aircraftClass = cls.key;
-      for (const other of group.querySelectorAll('.seg-btn')) {
-        other.setAttribute('aria-pressed', String(other.dataset.key === cls.key));
-      }
-      if (S.rows) {
-        reFeel(S.rows, S.aircraftClass);
-        renderResults();
-      }
-    });
-    group.appendChild(b);
-  }
-
-  // Settings dialog
   const dialog = $('settings-dialog');
   $('settings-btn').addEventListener('click', () => {
     $('api-key-input').value = getApiKey();
@@ -420,19 +322,16 @@ async function init() {
     if (dialog.returnValue === 'save') setApiKey($('api-key-input').value);
   });
 
-  // Data loads — airports are required, land is globe-only (degrades gracefully)
-  await loadAirports();
-  try {
-    const res = await fetch('./data/land.json');
-    const landPolys = await res.json();
-    S.globe = createGlobe($('globe-canvas'), { landPolys });
-  } catch {
-    $('globe-canvas').closest('.result-block').hidden = true;
+  if (!navigator.onLine) {
+    $('search-message').textContent = 'You appear to be offline — saved forecasts below still work.';
   }
+  renderSaved();
+  window.addEventListener('pageshow', renderSaved); // refresh shelf when returning
+
+  await loadAirports();
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
-    // New deploy activated → reload once so the page never keeps running old code.
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloaded) return;

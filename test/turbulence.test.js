@@ -218,6 +218,31 @@ test('parseProfile carries cloud cover through (clamped), missing → null', () 
   assert.equal(prof.find(l => l.p === 500).cover, 100);
 });
 
+// ---------- cause attribution ----------
+
+test('causeFor: storms, jet stream, low-level, layer shear, smooth', async () => {
+  const { causeFor } = await import('../turbulence.js');
+  const mkProfile = (u) => [
+    { z: 8000, u, v: 0, theta: 300, cover: null },
+    { z: 9000, u: u + 10, v: 0, theta: 301, cover: null },
+  ];
+  const layer = (Ri, N2) => ({ Ri, N2, VWS: 0.01, VWS_kt_kft: 5.9 });
+  // unstable + cloudy → storm
+  assert.equal(causeFor(layer(0.2, -1e-4), mkProfile(10), 8500, 70).key, 'storm');
+  // unstable + clear → thermals
+  assert.equal(causeFor(layer(0.2, -1e-4), mkProfile(10), 8500, 5).key, 'thermal');
+  // stable, strong wind aloft → jet
+  assert.equal(causeFor(layer(2, 1e-4), mkProfile(35), 8500, 0).key, 'jet');
+  // stable, light wind, high → layer shear
+  assert.equal(causeFor(layer(2, 1e-4), mkProfile(5), 8500, 0).key, 'shear');
+  // low level
+  const lowProf = [{ z: 500, u: 5, v: 0, theta: 300 }, { z: 2500, u: 12, v: 0, theta: 301 }];
+  assert.equal(causeFor(layer(2, 1e-4), lowProf, 1500, 0).key, 'lowlevel');
+  // smooth → null
+  assert.equal(causeFor(layer(50, 1e-4), mkProfile(10), 8500, 0), null);
+  assert.equal(causeFor(null, mkProfile(10), 8500, 0), null);
+});
+
 // ---------- per-aircraft felt severity ----------
 
 test('same air, different aircraft: light aircraft feels it worse', () => {

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SkyShear — your flight's turbulence forecast</title>
+<meta name="theme-color" content="#0A0E1A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function () {
+  function show(msg) {
+    var el = document.getElementById('err-banner');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = 'Something in the app failed to load: ' + msg + ' — reload to retry.';
+  }
+  window.__ssError = show;
+  window.addEventListener('error', function (e) {
+    show(e.message || (e.target && e.target.src ? 'could not load ' + e.target.src : 'unknown error'));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    show((e.reason && e.reason.message) || 'unhandled promise rejection');
+  });
+})();
+</script>
+</head>
+<body class="flight-page forecast-page">
+
+<div class="sky-gradient" aria-hidden="true"></div>
+<div class="sky-scene" aria-hidden="true">
+  <div class="stars"></div>
+  <div class="glow"></div>
+  <div class="clouds clouds-far"></div>
+  <div class="clouds clouds-mid"></div>
+  <div class="clouds clouds-near"></div>
+</div>
+
+<div id="err-banner" role="alert" hidden></div>
+
+<header class="flight-header">
+  <div>
+    <p id="hero-flight" class="hero-flight">—</p>
+    <p id="hero-route" class="hero-route"></p>
+  </div>
+  <a class="icon-btn back-btn" href="flight.html" aria-label="Back to flight search">←</a>
+</header>
+
+<main class="flight-main forecast-main">
+  <p id="page-message" class="notice" hidden role="status"></p>
+  <p id="saved-note" class="notice" hidden>✈ Offline copy — saved when you last had a connection.</p>
+
+  <p id="hero-verdict" class="hero-verdict" data-cat="smooth"></p>
+
+  <div class="result-block">
+    <h2>When to expect it</h2>
+    <div id="profile-chart" class="profile-chart"></div>
+    <div class="chart-legend">
+      <span><i style="background:#3FE0C5"></i>Smooth</span>
+      <span><i style="background:#E8E37A"></i>Light</span>
+      <span><i style="background:#F2C94C"></i>Light–Mod</span>
+      <span><i style="background:#FF8A3D"></i>Moderate</span>
+      <span><i style="background:#FF3D8B"></i>Mod–Severe</span>
+    </div>
+    <p class="chart-caption">Forecast potential — how it feels varies by aircraft.</p>
+  </div>
+
+  <div class="result-block" >
+    <h2>Why it's bumpy</h2>
+    <div id="cause-strip" class="cause-strip"></div>
+  </div>
+
+  <div class="control-row" id="flight-aircraft-row">
+    <p class="aircraft-caption">Ride comfort by aircraft size — most airline flights are “Commercial jet”:</p>
+    <div id="aircraft-group" class="seg-group" role="group" aria-label="Aircraft type"></div>
+  </div>
+
+  <div class="result-block">
+    <h2>Route</h2>
+    <div class="globe-wrap globe-wrap-lg"><canvas id="globe-canvas" aria-label="3D globe showing the flight route colored by turbulence"></canvas></div>
+    <p class="globe-hint">Drag to spin · route colored by forecast severity · typical great-circle routing — actual flights deviate</p>
+  </div>
+
+  <div class="result-block">
+    <h2>Segment details</h2>
+    <div id="segment-list" class="segment-list"></div>
+  </div>
+</main>
+
+<footer>
+  <p>Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
+  Airport data by <a href="https://ourairports.com/data/" rel="noopener">OurAirports</a> (public domain).
+  Land outlines derived from <a href="https://www.naturalearthdata.com/" rel="noopener">Natural Earth</a> (public domain).
+  © 2026 SkyShear · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <span class="mono dim">build v13</span></p>
+  <p class="disclaimer">Forecast turbulence potential along a modeled great-circle route (NOAA GFS via Open-Meteo,
+  ~13–25 km grid, hourly), evaluated at the hour your flight passes each point. Cause labels are physics-based
+  inferences (stability, wind, cloud) — estimates, not observations. Not an aviation weather product; never use for
+  flight decisions.</p>
+</footer>
+
+<script type="module" src="forecastapp.js"></script>
+</body>
+</html>

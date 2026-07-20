@@ -89,6 +89,7 @@ export async function getFlights(depIata, arrIata) {
     .filter(f => !f?.flight?.codeshared)
     .map(f => ({
       airline: f.airline?.name || f.airline?.iata || 'Unknown airline',
+      airlineIata: f.airline?.iata || null,
       flightIata: f.flight?.iata || f.flight?.icao || '',
       depTime: f.departure.scheduled,
       arrTime: f.arrival?.scheduled || null,
