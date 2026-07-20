@@ -94,7 +94,7 @@ export function worstSegments(rows, maxSegments = 3) {
     if (last && last.key === r.felt.key) {
       last.toMin = r.point.tMin;
     } else {
-      runs.push({ key: r.felt.key, label: r.felt.label, color: r.felt.color, rank: r.felt.rank, fromMin: r.point.tMin, toMin: r.point.tMin });
+      runs.push({ key: r.felt.key, label: r.felt.label, color: r.felt.color, rank: r.felt.rank, fromMin: r.point.tMin, toMin: r.point.tMin, phase: r.point.phase || 'cruise' });
     }
   }
   const flightMin = rows.length ? rows[rows.length - 1].point.tMin : 0;
@@ -106,7 +106,10 @@ export function worstSegments(rows, maxSegments = 3) {
     run.fromMin = Math.max(0, run.fromMin - spacing / 2);
     run.toMin = Math.min(flightMin, run.toMin + spacing / 2);
   }
-  const minRun = flightMin < 30 ? 0 : MIN_RUN_MIN;
+  // A single sample represents one full spacing of flight time; when samples
+  // are sparser than MIN_RUN_MIN the padded run must still qualify (a lone
+  // Moderate climb sample painted orange in the chart MUST reach the verdict).
+  const minRun = flightMin < 30 ? 0 : Math.min(MIN_RUN_MIN, spacing * 0.999);
   return runs
     .filter(x => x.rank > 0 && (x.toMin - x.fromMin) >= minRun)
     .sort((a, b) => b.rank - a.rank || (b.toMin - b.fromMin) - (a.toMin - a.fromMin))

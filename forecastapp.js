@@ -82,7 +82,10 @@ function renderHero(worst) {
     // Seatbelt sign from Light–Mod up, plus the cause glyph (storm/jet/shear).
     const cause = nearestRow((w.fromMin + w.toMin) / 2)?.cause;
     const icons = (w.rank >= 2 ? ICONS.seatbelt : '') + (cause ? causeIcon(cause.key, w.rank) : (w.rank >= 2 ? '' : ICONS.cloud));
-    heroV.innerHTML = `${icons} <span>${w.label.replace(' potential', '')} turbulence possible ${range} into the flight` +
+    const phaseTxt = w.phase === 'climb' ? ` during climb (${range})`
+      : w.phase === 'descent' ? ` during descent (${range})`
+      : ` ${range} into the flight`;
+    heroV.innerHTML = `${icons} <span>${w.label.replace(' potential', '')} turbulence possible${phaseTxt}` +
       (cause ? ` — ${cause.label.toLowerCase()}` : '') + `.</span>`;
     heroV.dataset.cat = w.key;
   }
@@ -103,8 +106,9 @@ function renderCauses(worst) {
     const div = document.createElement('div');
     div.className = 'cause-item';
     div.style.color = w.color;
+    const phaseTag = w.phase === 'climb' ? ' · climb' : w.phase === 'descent' ? ' · descent' : '';
     div.innerHTML = `${causeIcon(cause.key, w.rank)}<div><strong>${cause.label}</strong>` +
-      `<span>${fmtHM(w.fromMin)}–${fmtHM(w.toMin)} · ${w.label.replace(' potential', '')}</span></div>`;
+      `<span>${fmtHM(w.fromMin)}–${fmtHM(w.toMin)} · ${w.label.replace(' potential', '')}${phaseTag}</span></div>`;
     box.appendChild(div);
   }
   box.parentElement.hidden = !box.children.length;
