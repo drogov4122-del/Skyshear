@@ -217,8 +217,8 @@ function buildLadder() {
       <div class="rung-data">
         <span class="rung-shear" title="Vertical wind shear"></span>
         <span class="rung-ri" title="Richardson number"></span>
-        <span class="rung-where"></span>
-      </div>`;
+      </div>
+      <span class="rung-where"></span>`;
     frag.appendChild(row);
   }
   els.ladder.appendChild(frag);
@@ -271,7 +271,9 @@ function renderLadder() {
     where.textContent = r.ray.overheadFlag
       ? 'overhead'
       : `${fmt.km(r.ray.groundDistKm)} km @ ${fmt.deg(effectiveBearing())}`
-        + (r.ray.shallowFlag ? ' · low confidence' : '');
+        + (r.ray.shallowFlag
+          ? (S.aim.elevationDeg < 3 ? ' · pointing at the horizon — tilt up ↑' : ' · low confidence')
+          : '');
   }
   els.emptyState.hidden = !!rows;
 }
@@ -292,6 +294,21 @@ let lastReadout = 0;
 function renderReadouts(ts) {
   if (ts - lastReadout < 100) return; // ~10 Hz is plenty for numbers
   lastReadout = ts;
+
+  // The #1 field-use trap: reading the screen aims the BACK of the phone at the
+  // ground. Surface it the moment it happens, clear it when they tilt up.
+  const belowHorizon = S.mode === 'sensors' && S.sensorState === SENSOR_STATES.LIVE && S.aim.elevationDeg < 3;
+  if (belowHorizon !== S._tiltHintShown) {
+    S._tiltHintShown = belowHorizon;
+    const isTiltMsg = els.sensorMessage.textContent.startsWith('Tilt the phone');
+    if (belowHorizon && (els.sensorMessage.hidden || isTiltMsg)) {
+      els.sensorMessage.textContent = 'Tilt the phone up ↑ — the BACK of the phone is the pointer (hold it like photographing the sky). Right now you\'re aiming at the ground, so results are for air far away.';
+      els.sensorMessage.hidden = false;
+    } else if (!belowHorizon && isTiltMsg) {
+      els.sensorMessage.textContent = '';
+      els.sensorMessage.hidden = true;
+    }
+  }
   els.bearing.textContent = fmt.deg(effectiveBearing());
   els.elevation.textContent = fmt.deg(S.aim.elevationDeg);
   if (S.cameraOn) {
