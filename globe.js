@@ -2,6 +2,8 @@
 // Drag to spin (with inertia), gentle auto-rotation when idle, route arc
 // colored per-segment by forecast severity, atmosphere rim glow.
 
+import { latLonToWorldPx } from './radar.js';
+
 const D2R = Math.PI / 180;
 
 export function createGlobe(canvas, { landPolys }) {
@@ -103,6 +105,9 @@ export function createGlobe(canvas, { landPolys }) {
       ctx.fill();
       ctx.stroke();
     }
+
+    // Live precipitation radar over the land, under the night shading
+    drawRadar();
 
     // Night side + dusk band (sun position at the flight's departure time)
     drawNight();
@@ -229,6 +234,63 @@ export function createGlobe(canvas, { landPolys }) {
    * rows: evaluateRoute() output. Builds severity-colored segments and frames
    * the view on the route midpoint.
    */
+  // ---- Live precipitation radar (RainViewer world mercator, reprojected) ----
+  let radarWorld = null; // { data: ImageData, timeMs }
+  let radarOn = true;
+  const radarCanvas = document.createElement('canvas');
+  let radarKey = '';
+
+  function setRadar(world) { radarWorld = world; radarKey = ''; }
+  function toggleRadar(on) { radarOn = !!on; }
+
+  function drawRadar() {
+    if (!radarWorld || !radarOn) return;
+    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${radarWorld.timeMs}|${canvas.width}`;
+    if (key !== radarKey) {
+      radarKey = key;
+      const d2 = Math.PI / 180;
+      const φ0 = lat0 * d2, λ0v = lon0 * d2;
+      const sinφ0 = Math.sin(φ0), cosφ0 = Math.cos(φ0);
+      const src = radarWorld.data.data;
+      const SW = radarWorld.data.width;
+      const scale = 3;
+      const w = Math.max(2, Math.round(canvas.width / scale));
+      const h = Math.max(2, Math.round(canvas.height / scale));
+      radarCanvas.width = w; radarCanvas.height = h;
+      const rctx = radarCanvas.getContext('2d');
+      const img = rctx.createImageData(w, h);
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const X = (px * scale - cx) / R, Y = (cy - py * scale) / R;
+          const r2 = X * X + Y * Y;
+          if (r2 > 1) continue;
+          const Z = Math.sqrt(1 - r2);
+          // Inverse orthographic → lat/lon
+          const sinφ = Y * cosφ0 + Z * sinφ0;
+          const φ = Math.asin(Math.max(-1, Math.min(1, sinφ)));
+          const λ = λ0v + Math.atan2(X, Z * cosφ0 - Y * sinφ0);
+          const lat = φ / d2;
+          const lon = ((λ / d2 + 540) % 360) - 180;
+          const wp = latLonToWorldPx(lat, lon, SW);
+          const si = ((wp.y | 0) * SW + (wp.x | 0)) * 4;
+          const a = src[si + 3];
+          if (!a) continue;
+          const i = (py * w + px) * 4;
+          img.data[i] = src[si];
+          img.data[i + 1] = src[si + 1];
+          img.data[i + 2] = src[si + 2];
+          img.data[i + 3] = Math.min(215, a * 0.85);
+        }
+      }
+      rctx.putImageData(img, 0, 0);
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(radarCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
   // ---- Day/night terminator with dusk band ----
   let refTimeMs = null; // departure time when a route is set; else "now" at start()
   let sunMarkers = [];  // sunrise/sunset crossings along the route
@@ -348,5 +410,5 @@ export function createGlobe(canvas, { landPolys }) {
     lastInteraction = performance.now();
   }
 
-  return { start, stop, setRoute, setTimes, resize };
+  return { start, stop, setRoute, setTimes, setRadar, toggleRadar, resize };
 }

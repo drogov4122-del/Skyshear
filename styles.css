@@ -490,6 +490,11 @@ body.scrolled .reticle { display: none; }
 .cause-item strong { display: block; font-size: 0.92rem; }
 .cause-item span { font-size: 0.72rem; color: var(--ink-dim); font-family: var(--mono); }
 
+.block-head { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.hero-soothe {
+  font-size: 0.92rem; color: var(--ink-dim); line-height: 1.55; text-wrap: pretty;
+  padding: 0 0.2rem; max-width: 62ch;
+}
 .ss-icon { width: 1.2em; height: 1.2em; vertical-align: -0.25em; }
 .seg-icon { flex: none; display: flex; align-items: center; }
 .seg-icon .ss-icon { width: 1.5em; height: 1.5em; }

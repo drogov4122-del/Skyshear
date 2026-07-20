@@ -3,7 +3,7 @@
 // Strategy: stale-while-revalidate for same-origin shell files; the weather API
 // is NEVER cached here — weather.js owns freshness and its own last-good cache.
 
-const CACHE = 'skyshear-v16';
+const CACHE = 'skyshear-v17';
 const SHELL = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const SHELL = [
   './forecast.html',
   './forecastapp.js',
   './icons.js',
+  './radar.js',
   './styles.css',
   './app.js',
   './geometry.js',

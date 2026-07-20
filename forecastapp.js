@@ -10,6 +10,7 @@ import { renderProfileChart } from './profilechart.js';
 import { createGlobe } from './globe.js';
 import { AIRCRAFT_CLASSES } from './turbulence.js';
 import { causeIcon, severityIcon, ICONS } from './icons.js';
+import { loadRadarWorld } from './radar.js';
 
 const $ = id => document.getElementById(id);
 const SAVE_INDEX = 'ss_fc_index';
@@ -66,6 +67,15 @@ function render() {
   }
 }
 
+// What it feels like + why it's normal — written for nervous flyers.
+const REASSURE = {
+  smooth: 'Expect a calm ride. Tiny wiggles can still happen — that\'s just the plane riding ordinary air, like a boat on gentle water.',
+  light: 'You may feel light rocking or a few soft bumps, like a car on a slightly rough road. Completely routine — crews usually keep serving drinks right through it.',
+  lightmod: 'Occasional noticeable bumps; the seatbelt sign may come on. That\'s standard procedure, not a sign of trouble — the plane is simply crossing choppier air, the way a boat crosses a wake.',
+  moderate: 'Firmer jolts — drinks may slosh and walking gets awkward. Uncomfortable, but routine for the aircraft: airliners are certified for forces far beyond this, and pilots routinely change altitude to find smoother air.',
+  severe: 'Strong jolts are possible in this air — which is exactly why pilots plan around it and will reroute or change altitude. Even at this level, the aircraft stays well within its structural limits; buckle up and let the crew do their job.',
+};
+
 function renderHero(worst) {
   const m = S.meta;
   $('hero-flight').textContent = P.flight ? `${P.flight} · ${P.airline}` : `${m.originIata} → ${m.destIata}`;
@@ -90,6 +100,8 @@ function renderHero(worst) {
     heroV.dataset.cat = w.key;
   }
   $('saved-note').hidden = !S.fromSaved;
+  const worstKey = worst.length ? worst[0].key : 'smooth';
+  $('hero-soothe').textContent = REASSURE[worstKey] || REASSURE.smooth;
 }
 
 function renderCauses(worst) {
@@ -182,6 +194,31 @@ async function init() {
     const landPolys = await (await fetch('./data/land.json')).json();
     S.globe = createGlobe($('globe-canvas'), { landPolys });
   } catch { $('globe-canvas').closest('.result-block').hidden = true; }
+
+  // Live radar layer — strictly optional (offline/failed fetch = no layer).
+  const radarBtn = $('radar-btn');
+  if (S.globe && navigator.onLine) {
+    loadRadarWorld().then(world => {
+      S.globe.setRadar(world);
+      if (radarBtn) {
+        radarBtn.hidden = false;
+        radarBtn.addEventListener('click', () => {
+          const on = radarBtn.getAttribute('aria-pressed') !== 'true';
+          radarBtn.setAttribute('aria-pressed', String(on));
+          radarBtn.textContent = on ? 'Radar on' : 'Radar off';
+          S.globe.toggleRadar(on);
+        });
+        radarBtn.setAttribute('aria-pressed', 'true');
+        radarBtn.textContent = 'Radar on';
+        S.globe.toggleRadar(true);
+      }
+      const hint = document.querySelector('.globe-hint');
+      if (hint && world.timeMs) {
+        const age = Math.max(0, Math.round((Date.now() - world.timeMs) / 60000));
+        hint.textContent += ` · Radar © RainViewer (${age} min ago)`;
+      }
+    }).catch(() => { /* radar is a bonus, never a blocker */ });
+  }
 
   // Saved copy first when offline; otherwise compute live and save.
   const saved = loadSaved();
