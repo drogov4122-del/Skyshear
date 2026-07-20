@@ -170,7 +170,13 @@ async function runSearch() {
     if (isToday && getApiKey()) {
       const shown = await showFlightChooser();
       if (shown) return; // wait for the user's tap — forecast runs from there
-    } else if (!isToday) {
+    } else if (isToday) {
+      // No key: the chooser can't populate — SAY SO instead of silently skipping.
+      $('flights-section').hidden = false;
+      $('flight-list').textContent = '';
+      $('flights-message').textContent =
+        'To pick from real flights, add your free AviationStack key: tap the ⚙ gear (top right), paste the key, Save, then Search again. Forecasting for your chosen time meanwhile.';
+    } else {
       $('flights-section').hidden = true;
       msg.textContent = 'Flight lists cover today only — forecasting for your chosen time.';
     }
@@ -413,6 +419,13 @@ async function init() {
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // New deploy activated → reload once so the page never keeps running old code.
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      if (!S.searching) location.reload();
+    });
   }
 }
 
