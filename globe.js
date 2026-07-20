@@ -104,6 +104,9 @@ export function createGlobe(canvas, { landPolys }) {
       ctx.stroke();
     }
 
+    // Night side + dusk band (sun position at the flight's departure time)
+    drawNight();
+
     // Route arc, per-segment severity colors with glow
     if (route) {
       ctx.lineCap = 'round';
@@ -124,6 +127,7 @@ export function createGlobe(canvas, { landPolys }) {
       }
       drawEndpoint(route.origin, route.originLabel);
       drawEndpoint(route.dest, route.destLabel);
+      drawSunMarkers();
     }
 
     // Idle auto-rotation + inertia
@@ -225,6 +229,103 @@ export function createGlobe(canvas, { landPolys }) {
    * rows: evaluateRoute() output. Builds severity-colored segments and frames
    * the view on the route midpoint.
    */
+  // ---- Day/night terminator with dusk band ----
+  let refTimeMs = null; // departure time when a route is set; else "now" at start()
+  let sunMarkers = [];  // sunrise/sunset crossings along the route
+
+  function subsolar(ms) {
+    const d = new Date(ms);
+    const N = Math.floor((ms - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86400000);
+    const decl = -23.44 * Math.cos(2 * Math.PI * (N + 10) / 365.24);
+    const B = 2 * Math.PI * (N - 81) / 364;
+    const eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    const hours = d.getUTCHours() + d.getUTCMinutes() / 60;
+    let lon = -15 * (hours - 12 + eot / 60);
+    lon = ((lon + 540) % 360) - 180;
+    return { lat: decl, lon };
+  }
+
+  function sunElev(lat, lon, ms) {
+    const s = subsolar(ms);
+    const d2 = Math.PI / 180;
+    return Math.sin(lat * d2) * Math.sin(s.lat * d2) +
+      Math.cos(lat * d2) * Math.cos(s.lat * d2) * Math.cos((lon - s.lon) * d2);
+  }
+
+  const nightCanvas = document.createElement('canvas');
+  let nightKey = '';
+
+  function drawNight() {
+    const ms = refTimeMs || Date.now();
+    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${Math.floor(ms / 60000)}|${canvas.width}`;
+    if (key !== nightKey) {
+      nightKey = key;
+      const s = subsolar(ms);
+      const d2 = Math.PI / 180;
+      const φ0 = lat0 * d2, λ0v = lon0 * d2;
+      const φs = s.lat * d2, λ = (s.lon * d2) - λ0v;
+      const sx = Math.cos(φs) * Math.sin(λ);
+      const sy = Math.cos(φ0) * Math.sin(φs) - Math.sin(φ0) * Math.cos(φs) * Math.cos(λ);
+      const sz = Math.sin(φ0) * Math.sin(φs) + Math.cos(φ0) * Math.cos(φs) * Math.cos(λ);
+      const scale = 4;
+      const w = Math.max(2, Math.round(canvas.width / scale));
+      const h = Math.max(2, Math.round(canvas.height / scale));
+      nightCanvas.width = w; nightCanvas.height = h;
+      const nctx = nightCanvas.getContext('2d');
+      const img = nctx.createImageData(w, h);
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const X = (px * scale - cx) / R, Y = (cy - py * scale) / R;
+          const r2 = X * X + Y * Y;
+          if (r2 > 1) continue;
+          const Z = Math.sqrt(1 - r2);
+          const dot = X * sx + Y * sy + Z * sz; // sun elevation sine at this pixel
+          let a = 0, warm = 0;
+          if (dot < -0.12) a = 0.52;
+          else if (dot < 0.05) { a = 0.52 * (0.05 - dot) / 0.17; warm = Math.max(0, 1 - Math.abs(dot) / 0.06); }
+          if (a <= 0 && warm <= 0) continue;
+          const i = (py * w + px) * 4;
+          img.data[i] = 6 + warm * 120; img.data[i + 1] = 9 + warm * 45; img.data[i + 2] = 22;
+          img.data[i + 3] = Math.min(255, (a + warm * 0.10) * 255);
+        }
+      }
+      nctx.putImageData(img, 0, 0);
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(nightCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  function drawSunMarkers() {
+    ctx.font = `${Math.round(dpr * 13)}px system-ui`;
+    ctx.textAlign = 'center';
+    for (const m of sunMarkers) {
+      const p = project(m.lat, m.lon);
+      if (!p || !p.front) continue;
+      ctx.fillStyle = m.type === 'sunset' ? '#F2C94C' : '#FFE9A8';
+      ctx.fillText(m.type === 'sunset' ? '☾' : '☀', p.x, p.y - dpr * 8);
+    }
+  }
+
+  /** Sunrise/sunset crossings along the flight, from per-point times. */
+  function setTimes(departureMs, rows) {
+    refTimeMs = departureMs || null;
+    sunMarkers = [];
+    nightKey = '';
+    if (!departureMs || !rows) return;
+    let prev = null;
+    for (const r of rows) {
+      const pt = r.point;
+      const e = sunElev(pt.lat, pt.lon, departureMs + pt.tMin * 60000);
+      if (prev && (prev.e < 0) !== (e < 0)) {
+        sunMarkers.push({ lat: pt.lat, lon: pt.lon, type: e < 0 ? 'sunset' : 'sunrise' });
+      }
+      prev = { e };
+    }
+  }
+
   function setRoute(rows, originLabel, destLabel) {
     const valid = rows.filter(r => !r.noData);
     const pts = rows.map(r => r.point);
@@ -247,5 +348,5 @@ export function createGlobe(canvas, { landPolys }) {
     lastInteraction = performance.now();
   }
 
-  return { start, stop, setRoute, resize };
+  return { start, stop, setRoute, setTimes, resize };
 }

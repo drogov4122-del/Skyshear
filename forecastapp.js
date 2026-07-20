@@ -59,7 +59,11 @@ function render() {
   renderHero(worst);
   renderCauses(worst);
   renderSegments();
-  if (S.globe) { S.globe.setRoute(S.rows, S.meta.originIata, S.meta.destIata); S.globe.start(); }
+  if (S.globe) {
+    S.globe.setRoute(S.rows, S.meta.originIata, S.meta.destIata);
+    S.globe.setTimes?.(S.meta.departureMs, S.rows);
+    S.globe.start();
+  }
 }
 
 function renderHero(worst) {
