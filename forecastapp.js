@@ -75,8 +75,11 @@ function renderHero(worst) {
   } else {
     const w = worst[0];
     const range = (w.toMin - w.fromMin) < 5 ? `around ${fmtHM(w.fromMin)}` : `${fmtHM(w.fromMin)}–${fmtHM(w.toMin)}`;
-    heroV.innerHTML = `${w.rank >= 3 ? ICONS.seatbelt : ICONS.cloud || ''} ` +
-      `<span>${w.label.replace(' potential', '')} turbulence possible ${range} into the flight.</span>`;
+    // Seatbelt sign from Light–Mod up, plus the cause glyph (storm/jet/shear).
+    const cause = nearestRow((w.fromMin + w.toMin) / 2)?.cause;
+    const icons = (w.rank >= 2 ? ICONS.seatbelt : '') + (cause ? causeIcon(cause.key, w.rank) : (w.rank >= 2 ? '' : ICONS.cloud));
+    heroV.innerHTML = `${icons} <span>${w.label.replace(' potential', '')} turbulence possible ${range} into the flight` +
+      (cause ? ` — ${cause.label.toLowerCase()}` : '') + `.</span>`;
     heroV.dataset.cat = w.key;
   }
   $('saved-note').hidden = !S.fromSaved;

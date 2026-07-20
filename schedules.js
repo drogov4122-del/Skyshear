@@ -5,7 +5,7 @@
 // only powers the optional "pick your exact flight" list.
 
 const KEY_STORAGE = 'ss_avstack_key';
-const CACHE_PREFIX = 'ss_flights_';
+const CACHE_PREFIX = 'ss_flights2_'; // v2 shape: airport-local wall times + epoch
 const CACHE_TTL_MS = 24 * 3600 * 1000;
 const TIMEOUT_MS = 12000;
 
@@ -38,6 +38,32 @@ function writeCache(dep, arr, flights) {
   try {
     localStorage.setItem(cacheKey(dep, arr), JSON.stringify({ atMs: Date.now(), flights }));
   } catch { /* storage full/blocked — fine */ }
+}
+
+/**
+ * AviationStack quirk (verified against Google/OAG): `departure.scheduled` is
+ * the AIRPORT-LOCAL wall time wearing a fake "+00:00" suffix. Convert a wall
+ * time + IANA zone to a real epoch using the standard two-pass Intl technique.
+ */
+export function epochFromZonedWall(scheduled, ianaTz) {
+  const wall = String(scheduled).replace(/(\.\d+)?([+-]\d\d:?\d\d|Z)$/, '');
+  let t = Date.parse(wall + 'Z');
+  if (!Number.isFinite(t)) return NaN;
+  if (!ianaTz) return t;
+  try {
+    for (let i = 0; i < 2; i++) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: ianaTz, hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      }).formatToParts(t);
+      const g = k => parts.find(p => p.type === k)?.value ?? '00';
+      const h = g('hour') === '24' ? '00' : g('hour');
+      const asUtc = Date.parse(`${g('year')}-${g('month')}-${g('day')}T${h}:${g('minute')}:${g('second')}Z`);
+      t += Date.parse(wall + 'Z') - asUtc;
+    }
+    return t;
+  } catch { return Date.parse(wall + 'Z'); }
 }
 
 export class ScheduleError extends Error {
@@ -91,13 +117,15 @@ export async function getFlights(depIata, arrIata) {
       airline: f.airline?.name || f.airline?.iata || 'Unknown airline',
       airlineIata: f.airline?.iata || null,
       flightIata: f.flight?.iata || f.flight?.icao || '',
-      depTime: f.departure.scheduled,
+      // Airport-local wall time (what boarding passes and Google show) + true epoch.
+      depWall: String(f.departure.scheduled).replace(/(\.\d+)?([+-]\d\d:?\d\d|Z)$/, ''),
+      depMs: epochFromZonedWall(f.departure.scheduled, f.departure?.timezone),
       arrTime: f.arrival?.scheduled || null,
       depTerminal: f.departure?.terminal || null,
       aircraft: f.aircraft?.iata || null,
       status: f.flight_status || null,
     }))
-    .sort((a, b) => a.depTime.localeCompare(b.depTime));
+    .sort((a, b) => a.depWall.localeCompare(b.depWall));
 
   writeCache(depIata, arrIata, flights);
   return flights;

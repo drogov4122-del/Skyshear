@@ -48,7 +48,7 @@ export function causeIcon(causeKey, feltRank = 0) {
   return feltRank >= 3 ? ICONS.seatbelt : ICONS.smooth;
 }
 
-/** Severity badge icon: seatbelt sign whenever moderate or worse. */
+/** Severity badge icon: seatbelt sign from Light–Moderate up (airlines light it for chop). */
 export function severityIcon(feltRank) {
-  return feltRank >= 3 ? ICONS.seatbelt : feltRank >= 1 ? ICONS.cloud : ICONS.smooth;
+  return feltRank >= 2 ? ICONS.seatbelt : feltRank >= 1 ? ICONS.cloud : ICONS.smooth;
 }

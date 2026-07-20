@@ -180,9 +180,9 @@ async function runSearch() {
         let flights = await getFlights(S.origin.i, S.dest.i);
         // Remaining flights only — nobody needs this morning's departures.
         const cutoff = Date.now() - 20 * 60000;
-        flights = flights.filter(f => new Date(f.depTime).getTime() >= cutoff);
+        flights = flights.filter(f => !Number.isFinite(f.depMs) || f.depMs >= cutoff);
         if (flights.length) {
-          fmsg.textContent = 'Tap your flight — the forecast opens in a new tab. (List can include partner/codeshare numbers — same plane, different number.)';
+          fmsg.textContent = `Tap your flight — the forecast opens in a new tab. Times are ${S.origin.i} local. (List can include partner/codeshare numbers — same plane, different number.)`;
           for (const f of flights.slice(0, 20)) renderFlightCard(listEl, f);
         } else {
           fmsg.textContent = 'No remaining flights on this route today — use a custom departure time below.';
@@ -207,10 +207,10 @@ async function runSearch() {
 }
 
 function renderFlightCard(listEl, f) {
-  const dep = new Date(f.depTime);
+  const depMs = Number.isFinite(f.depMs) ? f.depMs : Date.parse(f.depWall + 'Z');
   const a = document.createElement('a');
   a.className = 'flight-row';
-  a.href = forecastUrl(dep.getTime(), f.flightIata, f.airline);
+  a.href = forecastUrl(depMs, f.flightIata, f.airline);
   a.target = '_blank';
   a.rel = 'noopener';
   a.append(logoEl(f.airlineIata, f.airline));
@@ -220,7 +220,11 @@ function renderFlightCard(listEl, f) {
   a.append(info);
   const t = document.createElement('span');
   t.className = 'flight-row-time mono';
-  t.textContent = dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Show the ORIGIN-AIRPORT local wall time — what the boarding pass says.
+  const hm = f.depWall.slice(11, 16);
+  const [H, M] = hm.split(':').map(Number);
+  const h12 = ((H + 11) % 12) + 1;
+  t.textContent = `${h12}:${String(M).padStart(2, '0')} ${H >= 12 ? 'PM' : 'AM'}`;
   a.append(t);
   listEl.append(a);
 }
