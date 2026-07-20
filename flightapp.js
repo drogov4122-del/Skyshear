@@ -22,6 +22,7 @@ const S = {
   meta: null,
   globe: null,
   searching: false,
+  selectedFlight: null, // { iata, airline } once the user taps a flight card
 };
 
 // ---------------- Airport data + autocomplete ----------------
@@ -143,27 +144,113 @@ function departureMs() {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+/**
+ * Turbli-style flow: Search → SELECT YOUR FLIGHT → forecast.
+ * Search validates the route and shows the flight list first; the forecast
+ * runs only after a flight (or "use custom time") is chosen. Fallback paths
+ * (no key, future date, list failure) go straight to the forecast with the
+ * picked departure time so the app never dead-ends.
+ */
 async function runSearch() {
   if (S.searching) return;
   const msg = $('search-message');
-  const btn = $('search-btn');
   msg.textContent = '';
-  // The ENTIRE body is guarded: an exception anywhere must land in the inline
-  // message, never escape as an unhandled rejection into the global banner.
-  S.searching = true;
-  btn.disabled = true;
-  btn.textContent = 'Forecasting…';
   try {
     S.origin = resolveAirport('origin-input', S.origin);
     S.dest = resolveAirport('dest-input', S.dest);
     if (!S.origin || !S.dest) { msg.textContent = 'Pick both airports (type a city or code, then tap a suggestion).'; return; }
     if (S.origin.i === S.dest.i) { msg.textContent = 'Origin and destination are the same airport.'; return; }
+    if (!validDeparture(msg)) return;
 
-    const depMs = departureMs();
-    const horizon = Date.now() + 7 * 86400000;
-    if (depMs > horizon) { msg.textContent = 'Forecasts are only reliable ~7 days out — pick an earlier departure.'; return; }
-    if (depMs < Date.now() - 86400000) { msg.textContent = 'That departure is in the past — pick a future time.'; return; }
+    S.selectedFlight = null;
+    $('result-section').hidden = true;
 
+    // Step 2 — flight selection. AviationStack lists today's flights only.
+    const isToday = new Date(departureMs()).toDateString() === new Date().toDateString();
+    if (isToday && getApiKey()) {
+      const shown = await showFlightChooser();
+      if (shown) return; // wait for the user's tap — forecast runs from there
+    } else if (!isToday) {
+      $('flights-section').hidden = true;
+      msg.textContent = 'Flight lists cover today only — forecasting for your chosen time.';
+    }
+    // Fallback: forecast directly with the departure-time picker value.
+    await runForecast(departureMs());
+  } catch (e) {
+    msg.textContent = (e && e.message) || 'Search failed — try again.';
+  }
+}
+
+function validDeparture(msg) {
+  const depMs = departureMs();
+  const horizon = Date.now() + 7 * 86400000;
+  if (depMs > horizon) { msg.textContent = 'Forecasts are only reliable ~7 days out — pick an earlier departure.'; return false; }
+  if (depMs < Date.now() - 86400000) { msg.textContent = 'That departure is in the past — pick a future time.'; return false; }
+  return true;
+}
+
+/** Show the flight list in chooser mode. Returns true if a choosable list rendered. */
+async function showFlightChooser() {
+  const section = $('flights-section');
+  const listEl = $('flight-list');
+  const msg = $('flights-message');
+  section.hidden = false;
+  listEl.textContent = '';
+  msg.textContent = 'Finding flights…';
+  try {
+    const flights = await getFlights(S.origin.i, S.dest.i);
+    if (!flights.length) {
+      msg.textContent = 'No flights found on this route today — using your chosen departure time instead.';
+      return false;
+    }
+    msg.textContent = 'Tap your flight to get its turbulence forecast:';
+    for (const f of flights.slice(0, 14)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'flight-card';
+      const dep = new Date(f.depTime);
+      b.innerHTML = `<strong>${escapeHtml(f.flightIata || f.airline)}</strong>` +
+        `<span>${escapeHtml(f.airline)}</span>` +
+        `<span class="mono">${dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` +
+        (f.aircraft ? `<span class="mono dim">${escapeHtml(f.aircraft)}</span>` : '');
+      b.addEventListener('click', () => {
+        if (S.searching) return;
+        S.selectedFlight = { iata: f.flightIata || '', airline: f.airline };
+        $('dep-input').value = toLocalInputValue(dep);
+        for (const c of listEl.querySelectorAll('.flight-card')) c.classList.toggle('selected', c === b);
+        runForecast(dep.getTime()).catch(() => {});
+      });
+      listEl.appendChild(b);
+    }
+    // Always offer the escape hatch.
+    const custom = document.createElement('button');
+    custom.type = 'button';
+    custom.className = 'flight-card flight-card-custom';
+    custom.innerHTML = `<strong>Custom time</strong><span>Not listed? Forecast for the departure time picked above</span>`;
+    custom.addEventListener('click', () => {
+      if (S.searching) return;
+      S.selectedFlight = null;
+      for (const c of listEl.querySelectorAll('.flight-card')) c.classList.remove('selected');
+      runForecast(departureMs()).catch(() => {});
+    });
+    listEl.appendChild(custom);
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+  } catch (e) {
+    msg.textContent = (e instanceof ScheduleError ? e.message : 'Flight list unavailable') + ' — forecasting for your chosen time.';
+    return false;
+  }
+}
+
+async function runForecast(depMs) {
+  if (S.searching) return;
+  const msg = $('search-message');
+  const btn = $('search-btn');
+  msg.textContent = '';
+  S.searching = true;
+  btn.disabled = true;
+  btn.textContent = 'Forecasting…';
+  try {
     const fp = buildFlightPath({ lat: S.origin.la, lon: S.origin.lo }, { lat: S.dest.la, lon: S.dest.lo });
     if (!fp) { msg.textContent = 'Could not build a route between those airports.'; return; }
 
@@ -180,11 +267,6 @@ async function runSearch() {
     renderResults();
     $('result-section').hidden = false;
     $('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Flight list reflects AviationStack's near-now data — only meaningful when
-    // the searched departure is today (viewer's calendar).
-    const isToday = new Date(depMs).toDateString() === new Date().toDateString();
-    $('flights-section').hidden = !isToday;
-    if (isToday) loadFlightList().catch(() => {}); // non-blocking enhancement
   } catch (e) {
     msg.textContent = (e && e.message) || 'Forecast failed — try again.';
   } finally {
@@ -207,7 +289,8 @@ function renderResults() {
 
 function renderSummary(worst) {
   const m = S.meta;
-  const base = `${m.originIata} → ${m.destIata} · ${Math.round(m.totalKm).toLocaleString()} km · ` +
+  const who = S.selectedFlight ? `${S.selectedFlight.iata} (${S.selectedFlight.airline}) · ` : '';
+  const base = `${who}${m.originIata} → ${m.destIata} · ${Math.round(m.totalKm).toLocaleString()} km · ` +
     `${formatDuration(m.durationMin)} · cruise FL${Math.round(m.cruiseFt / 100)} (${m.cruiseFt.toLocaleString()} ft)`;
   let verdict;
   if (!worst.length) {
@@ -251,38 +334,6 @@ function renderSegments() {
         `<span class="seg-data mono" title="Vertical wind shear">shear ${r.layer.VWS_kt_kft.toFixed(1)} kt/1,000 ft</span>`;
     }
     list.appendChild(div);
-  }
-}
-
-// ---------------- Flight list (optional layer) ----------------
-
-async function loadFlightList() {
-  const section = $('flights-section');
-  const listEl = $('flight-list');
-  const msg = $('flights-message');
-  section.hidden = false;
-  listEl.textContent = '';
-  msg.textContent = getApiKey() ? 'Loading flights…' : '';
-  try {
-    const flights = await getFlights(S.origin.i, S.dest.i);
-    msg.textContent = flights.length ? '' : 'No flights found for this route today.';
-    for (const f of flights.slice(0, 12)) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'flight-card';
-      const dep = new Date(f.depTime);
-      b.innerHTML = `<strong>${escapeHtml(f.flightIata || f.airline)}</strong>` +
-        `<span>${escapeHtml(f.airline)}</span>` +
-        `<span class="mono">${dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` +
-        (f.aircraft ? `<span class="mono dim">${escapeHtml(f.aircraft)}</span>` : '');
-      b.addEventListener('click', () => {
-        $('dep-input').value = toLocalInputValue(dep);
-        runSearch();
-      });
-      listEl.appendChild(b);
-    }
-  } catch (e) {
-    msg.textContent = e instanceof ScheduleError ? e.message : 'Flight list unavailable.';
   }
 }
 
