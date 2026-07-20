@@ -351,6 +351,19 @@ function toLocalInputValue(d) {
 // ---------------- Init ----------------
 
 async function init() {
+  // One-tap key install: opening flight.html#avkey=XXXX saves the AviationStack
+  // key on this device and cleans the URL (hash fragments never reach servers
+  // or logs). Removes the paste-on-phone friction entirely.
+  const hashKey = new URLSearchParams(location.hash.slice(1)).get('avkey');
+  if (hashKey) {
+    setApiKey(hashKey);
+    history.replaceState(null, '', location.pathname + location.search);
+    const msg = $('search-message');
+    msg.textContent = getApiKey()
+      ? 'Flight-list key saved on this device ✓ — search a route and pick your flight.'
+      : 'This browser is blocking storage (private mode?) — the key could not be saved.';
+  }
+
   // Default departure: next half hour, local.
   const now = new Date(Date.now() + 30 * 60000);
   now.setMinutes(now.getMinutes() < 30 ? 30 : 0, 0, 0);
