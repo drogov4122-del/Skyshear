@@ -3,8 +3,8 @@
 // One chart, one message: "when in my flight do I get bounced, and how much."
 
 const NS = 'http://www.w3.org/2000/svg';
-const W = 860, H = 280;
-const M = { top: 34, right: 16, bottom: 44, left: 46 };
+const W = 860, H = 296;
+const M = { top: 58, right: 16, bottom: 44, left: 46 }; // top fits two annotation rows
 const SMOOTH_COLOR = '#3FE0C5';
 
 function el(name, attrs, parent) {
@@ -93,12 +93,22 @@ export function renderProfileChart(container, rows, meta, worst = []) {
   el('text', { x: endX, y: y0 + 18, class: 'pc-xlabel pc-dest', 'text-anchor': 'middle' }, svg)
     .textContent = meta.destIata;
 
-  // Worst-segment annotations above the band
-  for (const s of worst) {
+  // Worst-segment annotations above the band. Labels are laid out greedily into
+  // up to two rows so close-together segments can never overprint each other;
+  // a third clustered segment keeps its colored span line but drops the text.
+  const anns = [...worst].sort((a, b) => a.fromMin - b.fromMin);
+  const rowRight = [-Infinity, -Infinity]; // rightmost occupied x per row
+  for (const s of anns) {
+    const label = `${shortSeverity(s.label)} ${fmtHM(s.fromMin)}–${fmtHM(s.toMin)}`;
     const cx = x((s.fromMin + s.toMin) / 2);
-    el('line', { x1: x(s.fromMin), x2: x(s.toMin), y1: M.top - 14, y2: M.top - 14, stroke: s.color, 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
-    const t = el('text', { x: cx, y: M.top - 20, class: 'pc-annot', 'text-anchor': 'middle', fill: s.color }, svg);
-    t.textContent = `${s.label.replace(' potential', '')} ${fmtHM(s.fromMin)}–${fmtHM(s.toMin)}`;
+    const halfW = label.length * 3.6; // ~7.2 px/char at the annotation font size
+    let row = rowRight.findIndex(right => cx - halfW > right + 10);
+    const yLine = M.top - 14 - (row < 0 ? 0 : row) * 20;
+    el('line', { x1: x(s.fromMin), x2: x(s.toMin), y1: yLine, y2: yLine, stroke: s.color, 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
+    if (row < 0) continue; // no text room in either row — span line only
+    rowRight[row] = cx + halfW;
+    const t = el('text', { x: cx, y: yLine - 6, class: 'pc-annot', 'text-anchor': 'middle', fill: s.color }, svg);
+    t.textContent = label;
   }
 
   container.appendChild(svg);
@@ -107,4 +117,8 @@ export function renderProfileChart(container, rows, meta, worst = []) {
 function fmtHM(min) {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+function shortSeverity(label) {
+  return label.replace(' potential', '').replace('Moderate–Severe', 'Mod–Severe').replace('Light–Moderate', 'Light–Mod');
 }

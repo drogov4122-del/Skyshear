@@ -209,7 +209,7 @@ async function showFlightChooser() {
       msg.textContent = 'No flights found on this route today — using your chosen departure time instead.';
       return false;
     }
-    msg.textContent = 'Tap your flight to get its turbulence forecast:';
+    msg.textContent = 'Tap your flight to get its turbulence forecast. (List can include partner/codeshare flight numbers — same plane, different number.)';
     for (const f of flights.slice(0, 14)) {
       const b = document.createElement('button');
       b.type = 'button';
