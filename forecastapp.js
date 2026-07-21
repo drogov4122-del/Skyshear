@@ -76,6 +76,15 @@ const REASSURE = {
   severe: 'Strong jolts are possible in this air — which is exactly why pilots plan around it and will reroute or change altitude. Even at this level, the aircraft stays well within its structural limits; buckle up and let the crew do their job.',
 };
 
+// What the air is physically doing — horizontal vs vertical motion, per cause.
+const CAUSE_EXPLAIN = {
+  jet: 'The jet stream is a fast river of horizontal wind. Where its speed changes between altitudes, the plane crosses layers moving at different speeds — mostly horizontal turbulence: gentle sways and brief sinks, not drops.',
+  shear: 'Two smooth air layers sliding over each other make rolling waves, like ripples where wind crosses water. Crossing the crests gives short vertical bobs — the plane rides over them the way a boat rides a wake.',
+  storm: 'Warm air rises and cool air falls in and near storms — vertical turbulence, the classic "elevator" feeling. Pilots see these cells on radar long before you do and steer around the strong cores as standard practice.',
+  thermal: 'Sun-heated ground sends up invisible columns of rising air. Flying through them gives quick vertical nudges — strongest on warm afternoons at lower altitude, fading as you climb.',
+  lowlevel: 'Wind near the ground shifts speed and direction as it rubs over terrain and buildings — brief horizontal jostles during climb and descent that smooth out with altitude.',
+};
+
 function renderHero(worst) {
   const m = S.meta;
   $('hero-flight').textContent = P.flight ? `${P.flight} · ${P.airline}` : `${m.originIata} → ${m.destIata}`;
@@ -101,27 +110,45 @@ function renderHero(worst) {
   }
   $('saved-note').hidden = !S.fromSaved;
   const worstKey = worst.length ? worst[0].key : 'smooth';
-  $('hero-soothe').textContent = REASSURE[worstKey] || REASSURE.smooth;
+  let soothe = REASSURE[worstKey] || REASSURE.smooth;
+  if (worst.length) {
+    const cause = nearestRow((worst[0].fromMin + worst[0].toMin) / 2)?.cause;
+    if (cause && CAUSE_EXPLAIN[cause.key]) soothe += ' ' + CAUSE_EXPLAIN[cause.key];
+  }
+  $('hero-soothe').textContent = soothe;
 }
 
 function renderCauses(worst) {
   const box = $('cause-strip');
   box.textContent = '';
-  // Name the cause for each annotated worst segment (deduped by cause key).
   const seen = new Set();
-  for (const w of worst) {
-    const mid = (w.fromMin + w.toMin) / 2;
-    const row = nearestRow(mid);
-    const cause = row?.cause;
-    if (!cause || seen.has(cause.key)) continue;
-    seen.add(cause.key);
+  const addCard = (causeKey, label, color, rank, fromMin, toMin, phase, causeLabel) => {
+    if (seen.has(causeKey)) return;
+    seen.add(causeKey);
     const div = document.createElement('div');
     div.className = 'cause-item';
-    div.style.color = w.color;
-    const phaseTag = w.phase === 'climb' ? ' · climb' : w.phase === 'descent' ? ' · descent' : '';
-    div.innerHTML = `${causeIcon(cause.key, w.rank)}<div><strong>${cause.label}</strong>` +
-      `<span>${fmtHM(w.fromMin)}–${fmtHM(w.toMin)} · ${w.label.replace(' potential', '')}${phaseTag}</span></div>`;
+    div.style.color = color;
+    const phaseTag = phase === 'climb' ? ' · climb' : phase === 'descent' ? ' · descent' : '';
+    div.innerHTML = `${causeIcon(causeKey, rank)}<div><strong>${causeLabel}</strong>` +
+      `<span>${fmtHM(fromMin)}–${fmtHM(toMin)} · ${label}${phaseTag}</span>` +
+      (CAUSE_EXPLAIN[causeKey] ? `<em class="cause-explain">${CAUSE_EXPLAIN[causeKey]}</em>` : '') + `</div>`;
     box.appendChild(div);
+  };
+
+  // Cards for the annotated worst segments (deduped by cause).
+  for (const w of worst) {
+    const row = nearestRow((w.fromMin + w.toMin) / 2);
+    if (row?.cause) addCard(row.cause.key, w.label.replace(' potential', ''), w.color, w.rank, w.fromMin, w.toMin, w.phase, row.cause.label);
+  }
+  // Storm sweep: convection anywhere on the path ALWAYS gets a card, even when
+  // a windier segment outranks it — nervous flyers care most about storms.
+  const stormRows = S.rows.filter(r => !r.noData && r.cause?.key === 'storm');
+  if (stormRows.length && !seen.has('storm')) {
+    const from = stormRows[0].point.tMin, to = stormRows[stormRows.length - 1].point.tMin;
+    const worstStorm = stormRows.reduce((a, b) => ((b.felt?.rank || 0) > (a.felt?.rank || 0) ? b : a));
+    addCard('storm', (worstStorm.felt?.label || 'Light potential').replace(' potential', ''),
+      worstStorm.felt?.color || '#F2C94C', worstStorm.felt?.rank || 1, from, to,
+      worstStorm.point.phase, worstStorm.cause.label);
   }
   box.parentElement.hidden = !box.children.length;
 }

@@ -5,7 +5,8 @@
 // classic green→yellow→red radar ramp (FlightRadar24-style).
 
 const INDEX_URL = 'https://api.rainviewer.com/public/weather-maps.json';
-export const WORLD_SIZE = 1024;
+const ZOOM = 2;           // 4×4 tiles of 512 px → 2048 px world (4× sharper cells)
+export const WORLD_SIZE = 512 * (1 << ZOOM);
 const COLOR_SCHEME = 4;   // TWC-style green/yellow/red
 const OPTIONS = '1_1';    // smoothed, snow shown
 
@@ -52,16 +53,25 @@ export async function loadRadarWorld() {
   canvas.height = WORLD_SIZE;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
+  const n = 1 << ZOOM;
   const jobs = [];
-  for (let x = 0; x < 2; x++) {
-    for (let y = 0; y < 2; y++) {
-      const url = `${index.host}${frame.path}/512/1/${x}/${y}/${COLOR_SCHEME}/${OPTIONS}.png`;
+  for (let x = 0; x < n; x++) {
+    for (let y = 0; y < n; y++) {
+      const url = `${index.host}${frame.path}/512/${ZOOM}/${x}/${y}/${COLOR_SCHEME}/${OPTIONS}.png`;
       jobs.push(loadTile(url).then(img => ctx.drawImage(img, x * 512, y * 512)));
     }
   }
   await Promise.all(jobs);
+
+  // Soft pre-blur so isolated cells read as blobs, not single pixels.
+  const soft = document.createElement('canvas');
+  soft.width = WORLD_SIZE; soft.height = WORLD_SIZE;
+  const sctx = soft.getContext('2d', { willReadFrequently: true });
+  sctx.filter = 'blur(1.2px)';
+  sctx.drawImage(canvas, 0, 0);
+
   return {
-    data: ctx.getImageData(0, 0, WORLD_SIZE, WORLD_SIZE),
+    data: sctx.getImageData(0, 0, WORLD_SIZE, WORLD_SIZE),
     timeMs: (frame.time || 0) * 1000,
     attribution: 'Radar © RainViewer',
   };

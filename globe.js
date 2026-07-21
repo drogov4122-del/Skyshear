@@ -135,14 +135,12 @@ export function createGlobe(canvas, { landPolys }) {
       drawSunMarkers();
     }
 
-    // Idle auto-rotation + inertia
-    const idle = ts - lastInteraction > 3500;
+    // Drag inertia only — no idle auto-rotation: the globe stays framed on the
+    // route so the radar layer renders sharp and steady (drag-to-spin remains).
     if (!dragging) {
       if (Math.abs(vLon) > 0.005 || Math.abs(vLat) > 0.005) {
         targetLon += vLon; targetLat += vLat;
         vLon *= 0.95; vLat *= 0.95;
-      } else if (idle && !prefersReducedMotion()) {
-        targetLon += 0.03;
       }
     }
     lon0 += (targetLon - lon0) * 0.2;
@@ -253,7 +251,7 @@ export function createGlobe(canvas, { landPolys }) {
       const sinφ0 = Math.sin(φ0), cosφ0 = Math.cos(φ0);
       const src = radarWorld.data.data;
       const SW = radarWorld.data.width;
-      const scale = 3;
+      const scale = 2; // finer grid — affordable now the idle view is static
       const w = Math.max(2, Math.round(canvas.width / scale));
       const h = Math.max(2, Math.round(canvas.height / scale));
       radarCanvas.width = w; radarCanvas.height = h;
@@ -272,14 +270,19 @@ export function createGlobe(canvas, { landPolys }) {
           const lat = φ / d2;
           const lon = ((λ / d2 + 540) % 360) - 180;
           const wp = latLonToWorldPx(lat, lon, SW);
-          const si = ((wp.y | 0) * SW + (wp.x | 0)) * 4;
-          const a = src[si + 3];
-          if (!a) continue;
+          // Bilinear sample of the 4 surrounding world pixels — smooth blobs.
+          const x0 = wp.x | 0, y0 = wp.y | 0;
+          const x1 = Math.min(SW - 1, x0 + 1), y1 = Math.min(SW - 1, y0 + 1);
+          const fx = wp.x - x0, fy = wp.y - y0;
+          const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+          const i00 = (y0 * SW + x0) * 4, i10 = (y0 * SW + x1) * 4, i01 = (y1 * SW + x0) * 4, i11 = (y1 * SW + x1) * 4;
+          const a = src[i00 + 3] * w00 + src[i10 + 3] * w10 + src[i01 + 3] * w01 + src[i11 + 3] * w11;
+          if (a < 8) continue;
           const i = (py * w + px) * 4;
-          img.data[i] = src[si];
-          img.data[i + 1] = src[si + 1];
-          img.data[i + 2] = src[si + 2];
-          img.data[i + 3] = Math.min(215, a * 0.85);
+          img.data[i] = src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11;
+          img.data[i + 1] = src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11;
+          img.data[i + 2] = src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11;
+          img.data[i + 3] = Math.min(220, a * 0.95);
         }
       }
       rctx.putImageData(img, 0, 0);
