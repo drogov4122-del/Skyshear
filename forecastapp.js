@@ -26,7 +26,19 @@ const P = {
   dep: parseInt(q.get('dep'), 10),
   flight: q.get('flight') || '',
   airline: q.get('airline') || '',
+  ac: (q.get('ac') || '').toUpperCase(),
 };
+
+// Aircraft type → ride-comfort class. Regional types (E-Jets, CRJs, turboprops)
+// feel a class rougher than mainline metal; everything airline-sized else = mainline.
+const REGIONAL_PREFIXES = ['E13', 'E14', 'E17', 'E19', 'E70', 'E75', 'E90', 'E95',
+  'CRJ', 'CR1', 'CR2', 'CR7', 'CR9', 'CRK', 'DH1', 'DH2', 'DH3', 'DH4', 'DH8',
+  'AT4', 'AT5', 'AT7', 'ATR', 'SF3', 'S20', 'J32', 'J41', 'EM2', 'E45', 'ER3', 'ER4', 'ERJ'];
+function classForAircraft(type) {
+  if (!type) return 'heavy';
+  return REGIONAL_PREFIXES.some(p => type.startsWith(p)) ? 'medium' : 'heavy';
+}
+S.aircraftClass = classForAircraft(P.ac);
 
 function saveKey() { return `${SAVE_PREFIX}${P.from}_${P.to}_${P.dep}`; }
 
@@ -200,6 +212,26 @@ async function init() {
   if (!P.from || !P.to || !Number.isFinite(P.dep)) {
     fail('Missing flight details — open a forecast from the Flight forecast search page.');
     return;
+  }
+
+  // Tappable icon legend
+  const legend = $('legend-items');
+  if (legend) {
+    const items = [
+      [ICONS.seatbelt, 'Seatbelt sign', 'Buckle-up conditions — Light–Moderate turbulence or stronger expected.'],
+      [ICONS.jet, 'Jet stream wind', 'Fast horizontal winds aloft changing speed between altitudes.'],
+      [ICONS.shear, 'Layer shear', 'Two smooth air layers sliding over each other, making wave-like bumps.'],
+      [ICONS.storm, 'Storm activity', 'Rising/falling air in or near convective storms — vertical bumps.'],
+      [ICONS.thermal, 'Thermals / low-level wind', 'Rising warm air or gusty near-ground wind during climb and descent.'],
+      [ICONS.smooth, 'Calm air', 'Stable, smooth conditions.'],
+      [ICONS.cloud, 'Light chop', 'Minor bumpiness — below seatbelt-sign level.'],
+    ];
+    for (const [icon, name, desc] of items) {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      row.innerHTML = `<span class="legend-icon">${icon}</span><div><strong>${name}</strong><span>${desc}</span></div>`;
+      legend.appendChild(row);
+    }
   }
 
   // Aircraft selector

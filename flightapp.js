@@ -124,10 +124,11 @@ function localDateStr(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-function forecastUrl(depMs, flightIata = '', airline = '') {
+function forecastUrl(depMs, flightIata = '', airline = '', aircraft = '') {
   const u = new URLSearchParams({ from: S.origin.i, to: S.dest.i, dep: String(depMs) });
   if (flightIata) u.set('flight', flightIata);
   if (airline) u.set('airline', airline);
+  if (aircraft) u.set('ac', aircraft);
   return `forecast.html?${u}`;
 }
 
@@ -210,7 +211,7 @@ function renderFlightCard(listEl, f) {
   const depMs = Number.isFinite(f.depMs) ? f.depMs : Date.parse(f.depWall + 'Z');
   const a = document.createElement('a');
   a.className = 'flight-row';
-  a.href = forecastUrl(depMs, f.flightIata, f.airline);
+  a.href = forecastUrl(depMs, f.flightIata, f.airline, f.aircraft || '');
   a.target = '_blank';
   a.rel = 'noopener';
   a.append(logoEl(f.airlineIata, f.airline));

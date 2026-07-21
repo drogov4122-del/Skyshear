@@ -10,6 +10,7 @@ export function createGlobe(canvas, { landPolys }) {
   const ctx = canvas.getContext('2d');
   let dpr = Math.min(2, window.devicePixelRatio || 1);
   let size = 0, cx = 0, cy = 0, R = 0;
+  let zoom = 1, fitZoom = 1; // fitZoom = frames the route; user can pinch/wheel beyond
 
   // View rotation: lon0/lat0 = center of view.
   let lon0 = -30, lat0 = 30;
@@ -28,7 +29,12 @@ export function createGlobe(canvas, { landPolys }) {
     size = Math.min(canvas.width, canvas.height);
     cx = canvas.width / 2;
     cy = canvas.height / 2;
-    R = size * 0.44;
+    R = size * 0.44 * zoom;
+  }
+
+  function setZoom(z) {
+    zoom = Math.max(1, Math.min(8, z));
+    R = size * 0.44 * zoom;
   }
 
   // Orthographic projection. Returns null when on the far hemisphere.
@@ -176,8 +182,17 @@ export function createGlobe(canvas, { landPolys }) {
   }
 
   // ---- Pointer interaction ----
-  let activePointerId = null; // track one pointer; a second finger must not jitter the drag
+  const pointers = new Map(); // all active pointers (pinch support)
+  let pinchDist = 0;
+  let activePointerId = null; // primary pointer drives rotation
   function onDown(e) {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [p1, p2] = [...pointers.values()];
+      pinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      dragging = false; // two fingers = zoom, not rotate
+      return;
+    }
     if (activePointerId !== null) return;
     activePointerId = e.pointerId;
     dragging = true;
@@ -187,6 +202,14 @@ export function createGlobe(canvas, { landPolys }) {
     canvas.setPointerCapture?.(e.pointerId);
   }
   function onMove(e) {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [p1, p2] = [...pointers.values()];
+      const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      if (pinchDist > 0) setZoom(zoom * (d / pinchDist));
+      pinchDist = d;
+      return;
+    }
     if (!dragging || e.pointerId !== activePointerId) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
@@ -198,6 +221,8 @@ export function createGlobe(canvas, { landPolys }) {
     lastInteraction = performance.now();
   }
   function onUp(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = 0;
     if (e.pointerId !== activePointerId) return;
     activePointerId = null;
     dragging = false;
@@ -208,6 +233,15 @@ export function createGlobe(canvas, { landPolys }) {
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    setZoom(zoom * (e.deltaY < 0 ? 1.15 : 0.87));
+    lastInteraction = performance.now();
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => {
+    setZoom(zoom < fitZoom * 1.8 ? fitZoom * 2.5 : fitZoom);
+    lastInteraction = performance.now();
+  });
   canvas.style.touchAction = 'none';
 
   window.addEventListener('resize', resize);
@@ -243,7 +277,7 @@ export function createGlobe(canvas, { landPolys }) {
 
   function drawRadar() {
     if (!radarWorld || !radarOn) return;
-    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${radarWorld.timeMs}|${canvas.width}`;
+    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${radarWorld.timeMs}|${canvas.width}|${Math.round(R)}`;
     if (key !== radarKey) {
       radarKey = key;
       const d2 = Math.PI / 180;
@@ -322,7 +356,7 @@ export function createGlobe(canvas, { landPolys }) {
 
   function drawNight() {
     const ms = refTimeMs || Date.now();
-    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${Math.floor(ms / 60000)}|${canvas.width}`;
+    const key = `${lon0.toFixed(1)}|${lat0.toFixed(1)}|${Math.floor(ms / 60000)}|${canvas.width}|${Math.round(R)}`;
     if (key !== nightKey) {
       nightKey = key;
       const s = subsolar(ms);
@@ -410,8 +444,19 @@ export function createGlobe(canvas, { landPolys }) {
     const mid = valid[Math.floor(valid.length / 2)]?.point || pts[Math.floor(pts.length / 2)];
     targetLon = mid.lon;
     targetLat = Math.max(-60, Math.min(60, mid.lat));
+    lon0 = targetLon; lat0 = targetLat; // jump straight to the route
+    // Auto-zoom so the route fills ~60% of the view (short hops get close-ups
+    // where the radar reads as blobs, not pixels).
+    const a = pts[0], b = pts[pts.length - 1];
+    const d2 = Math.PI / 180;
+    const sigma = Math.acos(Math.max(-1, Math.min(1,
+      Math.sin(a.lat * d2) * Math.sin(b.lat * d2) +
+      Math.cos(a.lat * d2) * Math.cos(b.lat * d2) * Math.cos((a.lon - b.lon) * d2))));
+    const chord = 2 * Math.sin(Math.min(Math.PI / 2.2, sigma) / 2) || 0.02;
+    fitZoom = Math.max(1, Math.min(6, 1.2 / chord));
+    setZoom(fitZoom);
     lastInteraction = performance.now();
   }
 
-  return { start, stop, setRoute, setTimes, setRadar, toggleRadar, resize };
+  return { start, stop, setRoute, setTimes, setRadar, toggleRadar, setZoom, resize };
 }

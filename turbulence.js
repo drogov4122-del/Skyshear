@@ -269,7 +269,7 @@ export function causeFor(layer, profile, sampleAltM, coverPct) {
 export const AIRCRAFT_CLASSES = [
   { key: 'light', label: 'Light aircraft', short: 'GA',  thresholds: { light: 0.10, moderate: 0.20, severe: 0.45 } },
   { key: 'medium', label: 'Regional jet',  short: 'RJ',  thresholds: { light: 0.15, moderate: 0.35, severe: 0.50 } },
-  { key: 'heavy', label: 'Commercial jet', short: 'JET', thresholds: { light: 0.20, moderate: 0.45, severe: 0.60 } },
+  { key: 'heavy', label: 'Mainline jet', short: 'JET', thresholds: { light: 0.20, moderate: 0.45, severe: 0.60 } },
 ];
 
 const CLASS_BY_KEY = Object.fromEntries(AIRCRAFT_CLASSES.map(c => [c.key, c]));
