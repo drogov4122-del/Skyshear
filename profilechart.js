@@ -102,12 +102,14 @@ export function renderProfileChart(container, rows, meta, worst = []) {
     const label = `${shortSeverity(s.label)} ${fmtHM(s.fromMin)}–${fmtHM(s.toMin)}`;
     const cx = x((s.fromMin + s.toMin) / 2);
     const halfW = label.length * 3.6; // ~7.2 px/char at the annotation font size
-    let row = rowRight.findIndex(right => cx - halfW > right + 10);
+    // Clamp so labels near either edge stay fully inside the chart.
+    const labelX = Math.max(halfW + 4, Math.min(W - halfW - 4, cx));
+    let row = rowRight.findIndex(right => labelX - halfW > right + 10);
     const yLine = M.top - 14 - (row < 0 ? 0 : row) * 20;
     el('line', { x1: x(s.fromMin), x2: x(s.toMin), y1: yLine, y2: yLine, stroke: s.color, 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
     if (row < 0) continue; // no text room in either row — span line only
-    rowRight[row] = cx + halfW;
-    const t = el('text', { x: cx, y: yLine - 6, class: 'pc-annot', 'text-anchor': 'middle', fill: s.color }, svg);
+    rowRight[row] = labelX + halfW;
+    const t = el('text', { x: labelX, y: yLine - 6, class: 'pc-annot', 'text-anchor': 'middle', fill: s.color }, svg);
     t.textContent = label;
   }
 
