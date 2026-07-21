@@ -490,6 +490,19 @@ body.scrolled .reticle { display: none; }
 .cause-item .ss-icon { width: 1.9em; height: 1.9em; flex: none; margin-top: 0.15rem; }
 .cause-item strong { display: block; font-size: 0.92rem; }
 .cause-item span { font-size: 0.72rem; color: var(--ink-dim); font-family: var(--mono); }
+.globe-wrap { position: relative; }
+.globe-zoom {
+  position: absolute; right: 0.6rem; bottom: 0.6rem;
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.globe-zoom button {
+  width: 46px; height: 46px; font-size: 1.35rem; line-height: 1;
+  color: var(--ink); background: rgba(10, 14, 26, 0.78);
+  border: 1px solid var(--line); border-radius: 9px; cursor: pointer;
+}
+.globe-zoom button:active { transform: scale(0.96); }
+.globe-zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .icon-legend { margin-top: 0.9rem; border-top: 1px solid var(--line); padding-top: 0.6rem; }
 .icon-legend summary {
   cursor: pointer; font-size: 0.82rem; color: var(--ink-dim);

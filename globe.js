@@ -458,5 +458,8 @@ export function createGlobe(canvas, { landPolys }) {
     lastInteraction = performance.now();
   }
 
-  return { start, stop, setRoute, setTimes, setRadar, toggleRadar, setZoom, resize };
+  function zoomBy(f) { setZoom(zoom * f); lastInteraction = performance.now(); }
+  function resetZoom() { setZoom(fitZoom); lastInteraction = performance.now(); }
+
+  return { start, stop, setRoute, setTimes, setRadar, toggleRadar, setZoom, zoomBy, resetZoom, resize };
 }

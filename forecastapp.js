@@ -254,6 +254,13 @@ async function init() {
     S.globe = createGlobe($('globe-canvas'), { landPolys });
   } catch { $('globe-canvas').closest('.result-block').hidden = true; }
 
+  // Globe zoom buttons — gesture-proof zoom on any device.
+  if (S.globe) {
+    $('zoom-in')?.addEventListener('click', () => S.globe.zoomBy(1.45));
+    $('zoom-out')?.addEventListener('click', () => S.globe.zoomBy(1 / 1.45));
+    $('zoom-fit')?.addEventListener('click', () => S.globe.resetZoom());
+  }
+
   // Live radar layer — strictly optional (offline/failed fetch = no layer).
   const radarBtn = $('radar-btn');
   if (S.globe && navigator.onLine) {
@@ -310,6 +317,18 @@ async function init() {
       fail((e && e.message) || 'Forecast failed — check your connection and reload.');
     }
   }
+}
+
+// Keep this page self-updating too — it's usually opened in a fresh tab and
+// must never pin an old cached build (the flight/index pages already do this).
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
 }
 
 init().catch(e => window.__ssError?.(`Startup failed: ${e.message}`));
